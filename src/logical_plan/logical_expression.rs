@@ -5,7 +5,7 @@ use crate::{error::Error, schema::Field};
 use super::LogicalPlan;
 
 pub trait LogicalExpression {
-    fn toField<'a, T: LogicalPlan>(&self, input: &'a T) -> Result<&'a Field, Error>;
+    fn toField<'a, T: LogicalPlan>(&self, input: &T) -> Result<Field, Error>;
 }
 
 struct Column {
@@ -13,13 +13,14 @@ struct Column {
 }
 
 impl LogicalExpression for Column {
-    fn toField<'a, T: LogicalPlan>(&self, input: &'a T) -> Result<&'a Field, Error> {
+    fn toField<'a, T: LogicalPlan>(&self, input: &T) -> Result<Field, Error> {
         input
             .schema()
             .iter()
             .filter(|x| x.name == self.name)
             .next()
-            .ok_or(Error::ExceedingBoundsError(0))
+            .map(|x| x.clone())
+            .ok_or(Error::NoFieldInLogicalPlan(self.name.clone()))
     }
 }
 

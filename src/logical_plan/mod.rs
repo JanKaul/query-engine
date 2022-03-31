@@ -1,10 +1,11 @@
-use crate::data_source::{self, DataSource};
+use crate::data_source::DataSource;
+use crate::error::Error;
 use crate::schema::Schema;
 use std::fmt;
 
 mod logical_expression;
 pub trait LogicalPlan: fmt::Display {
-    fn schema(&self) -> &Schema;
+    fn schema(&self) -> Result<Schema, Error>;
     fn children(&self) -> Option<&[Box<dyn LogicalPlan>]>;
 }
 
@@ -68,15 +69,62 @@ impl<D: DataSource> Scan<D> {
 
 impl<D: DataSource> fmt::Display for Scan<D> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", format_logical_plan(self, 0))
+        match &self.projection {
+            Some(proj) => write!(
+                f,
+                "Scan: {}; projection={}",
+                self.path,
+                String::from_iter(proj.clone().into_iter())
+            ),
+            None => write!(f, "Scan: {}; projection=None", self.path),
+        }
     }
 }
 
 impl<D: DataSource> LogicalPlan for Scan<D> {
-    fn schema(&self) -> &Schema {
-        self.schema()
+    fn schema(&self) -> Result<Schema, Error> {
+        Ok(self.schema.clone())
     }
     fn children(&self) -> Option<&[Box<dyn LogicalPlan>]> {
         None
+    }
+}
+
+struct Projection<E: logical_expression::LogicalExpression + fmt::Display> {
+    exprs: Vec<E>,
+    children: [Box<dyn LogicalPlan>; 1],
+}
+
+impl<E: logical_expression::LogicalExpression> Projection<E> {
+    fn new(input: Box<dyn LogicalPlan>, exprs: Vec<E>) -> Self {
+        Projection {
+            exprs: exprs,
+            children: [input],
+        }
+    }
+}
+
+impl<E: logical_expression::LogicalExpression + fmt::Display> fmt::Display for Projection<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Projection: {}",
+            self.exprs
+                .iter()
+                .map(|expr| format!("{}, ", expr))
+                .collect::<String>()
+        )
+    }
+}
+
+impl<E: logical_expression::LogicalExpression> LogicalPlan for Projection<E> {
+    fn schema(&self) -> Result<Schema, Error> {
+        self.exprs
+            .iter()
+            .map(|expr| expr.toField(&*self.children[0]))
+            .collect::<Result<Schema, Error>>()
+    }
+    fn children(&self) -> Option<&[Box<dyn LogicalPlan>]> {
+        Some(&self.children)
     }
 }

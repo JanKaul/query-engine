@@ -7,7 +7,7 @@ use crate::{error::Error, schema::Field};
 use super::LogicalPlan;
 
 pub trait LogicalExpression: fmt::Display {
-    fn toField<'a, T: LogicalPlan>(&self, input: &T) -> Result<Field, Error>;
+    fn toField<'a, T: LogicalPlan + ?Sized>(&self, input: &T) -> Result<Field, Error>;
 }
 
 // Column expression
@@ -22,9 +22,9 @@ impl Column {
 }
 
 impl LogicalExpression for Column {
-    fn toField<'a, T: LogicalPlan>(&self, input: &T) -> Result<Field, Error> {
+    fn toField<'a, T: LogicalPlan + ?Sized>(&self, input: &T) -> Result<Field, Error> {
         input
-            .schema()
+            .schema()?
             .iter()
             .filter(|x| x.name == self.name)
             .next()
@@ -52,7 +52,7 @@ impl LiteralString {
 }
 
 impl LogicalExpression for LiteralString {
-    fn toField<'a, T: LogicalPlan>(&self, _input: &T) -> Result<Field, Error> {
+    fn toField<'a, T: LogicalPlan + ?Sized>(&self, _input: &T) -> Result<Field, Error> {
         Ok(Field {
             name: self.value.clone(),
             data_type: datatypes::DataType::Utf8,
@@ -89,7 +89,7 @@ macro_rules! booleanBinaryExpression {
         }
 
         impl<L: LogicalExpression, R: LogicalExpression> LogicalExpression for $i<L, R> {
-            fn toField<'a, T: LogicalPlan>(&self, _input: &T) -> Result<Field, Error> {
+            fn toField<'a, T: LogicalPlan + ?Sized>(&self, _input: &T) -> Result<Field, Error> {
                 Ok(Field {
                     name: self.name.clone(),
                     data_type: datatypes::DataType::Boolean,
@@ -140,7 +140,7 @@ macro_rules! mathExpression {
         }
 
         impl<L: LogicalExpression, R: LogicalExpression> LogicalExpression for $i<L, R> {
-            fn toField<'a, T: LogicalPlan>(&self, input: &T) -> Result<Field, Error> {
+            fn toField<'a, T: LogicalPlan + ?Sized>(&self, input: &T) -> Result<Field, Error> {
                 Ok(Field {
                     name: self.name.clone(),
                     data_type: self.left.toField(input)?.data_type,
@@ -181,7 +181,7 @@ macro_rules! aggregateExpression {
         }
 
         impl<T: LogicalExpression> LogicalExpression for $i<T> {
-            fn toField<'a, I: LogicalPlan>(&self, input: &I) -> Result<Field, Error> {
+            fn toField<'a, I: LogicalPlan + ?Sized>(&self, input: &I) -> Result<Field, Error> {
                 Ok(Field {
                     name: self.name.clone(),
                     data_type: self.expr.toField(input)?.data_type,
@@ -219,7 +219,7 @@ impl<T: LogicalExpression> Count<T> {
 }
 
 impl<T: LogicalExpression> LogicalExpression for Count<T> {
-    fn toField<'a, I: LogicalPlan>(&self, input: &I) -> Result<Field, Error> {
+    fn toField<'a, I: LogicalPlan + ?Sized>(&self, input: &I) -> Result<Field, Error> {
         Ok(Field {
             name: self.name.clone(),
             data_type: self.expr.toField(input)?.data_type,

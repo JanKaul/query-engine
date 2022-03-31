@@ -90,6 +90,7 @@ impl<D: DataSource> LogicalPlan for Scan<D> {
     }
 }
 
+// Projection
 struct Projection<E: logical_expression::LogicalExpression + fmt::Display> {
     exprs: Vec<E>,
     children: [Box<dyn LogicalPlan>; 1],
@@ -123,6 +124,37 @@ impl<E: logical_expression::LogicalExpression> LogicalPlan for Projection<E> {
             .iter()
             .map(|expr| expr.toField(&*self.children[0]))
             .collect::<Result<Schema, Error>>()
+    }
+    fn children(&self) -> Option<&[Box<dyn LogicalPlan>]> {
+        Some(&self.children)
+    }
+}
+
+// Selection
+
+struct Selection<E: logical_expression::LogicalExpression + fmt::Display> {
+    expr: E,
+    children: [Box<dyn LogicalPlan>; 1],
+}
+
+impl<E: logical_expression::LogicalExpression> Selection<E> {
+    fn new(input: Box<dyn LogicalPlan>, expr: E) -> Self {
+        Selection {
+            expr: expr,
+            children: [input],
+        }
+    }
+}
+
+impl<E: logical_expression::LogicalExpression + fmt::Display> fmt::Display for Selection<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Selection: {}", format!("{}, ", self.expr))
+    }
+}
+
+impl<E: logical_expression::LogicalExpression> LogicalPlan for Selection<E> {
+    fn schema(&self) -> Result<Schema, Error> {
+        self.expr.toField(&*self.children[0]).map(|x| vec![x])
     }
     fn children(&self) -> Option<&[Box<dyn LogicalPlan>]> {
         Some(&self.children)

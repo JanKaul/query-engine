@@ -35,7 +35,7 @@ impl LogicalExpression for Column {
 
 impl fmt::Display for Column {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "({})", self.name)
+        write!(f, "#{}", self.name)
     }
 }
 
@@ -62,7 +62,7 @@ impl LogicalExpression for LiteralString {
 
 impl fmt::Display for LiteralString {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "({})", self.value)
+        write!(f, "'{}'", self.value)
     }
 }
 
@@ -99,7 +99,7 @@ macro_rules! booleanBinaryExpression {
 
         impl<L: LogicalExpression, R: LogicalExpression> fmt::Display for $i<L, R> {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(f, "({} {} {})", self.left, self.op, self.right)
+                write!(f, "{} {} {}", self.left, self.op, self.right)
             }
         }
     };
@@ -116,3 +116,119 @@ booleanBinaryExpression!(LtEq, "lteq".to_string(), "<=".to_string());
 
 booleanBinaryExpression!(And, "and".to_string(), "&&".to_string());
 booleanBinaryExpression!(Or, "or".to_string(), "||".to_string());
+
+// MathExpressions
+
+macro_rules! mathExpression {
+    ($i: ident, $name: expr, $op: expr) => {
+        struct $i<L: LogicalExpression, R: LogicalExpression> {
+            name: String,
+            op: String,
+            left: L,
+            right: R,
+        }
+
+        impl<L: LogicalExpression, R: LogicalExpression> $i<L, R> {
+            pub fn new(left: L, right: R) -> Self {
+                $i {
+                    name: $name,
+                    op: $op,
+                    left: left,
+                    right: right,
+                }
+            }
+        }
+
+        impl<L: LogicalExpression, R: LogicalExpression> LogicalExpression for $i<L, R> {
+            fn toField<'a, T: LogicalPlan>(&self, input: &T) -> Result<Field, Error> {
+                Ok(Field {
+                    name: self.name.clone(),
+                    data_type: self.left.toField(input)?.data_type,
+                })
+            }
+        }
+
+        impl<L: LogicalExpression, R: LogicalExpression> fmt::Display for $i<L, R> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "{} {} {}", self.left, self.op, self.right)
+            }
+        }
+    };
+}
+
+mathExpression!(Add, "add".to_string(), "+".to_string());
+mathExpression!(Sub, "sub".to_string(), "-".to_string());
+mathExpression!(Mul, "mul".to_string(), "*".to_string());
+mathExpression!(Div, "div".to_string(), "/".to_string());
+mathExpression!(Mod, "mod".to_string(), "%".to_string());
+
+// AggregateExpressions
+
+macro_rules! aggregateExpression {
+    ($i: ident, $name: expr) => {
+        struct $i<T: LogicalExpression> {
+            name: String,
+            expr: T,
+        }
+
+        impl<T: LogicalExpression> $i<T> {
+            pub fn new(expr: T) -> Self {
+                $i {
+                    name: $name,
+                    expr: expr,
+                }
+            }
+        }
+
+        impl<T: LogicalExpression> LogicalExpression for $i<T> {
+            fn toField<'a, I: LogicalPlan>(&self, input: &I) -> Result<Field, Error> {
+                Ok(Field {
+                    name: self.name.clone(),
+                    data_type: self.expr.toField(input)?.data_type,
+                })
+            }
+        }
+
+        impl<T: LogicalExpression> fmt::Display for $i<T> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "{} ({})", self.name, self.expr)
+            }
+        }
+    };
+}
+
+aggregateExpression!(Sum, "sum".to_string());
+aggregateExpression!(Avg, "avg".to_string());
+aggregateExpression!(Max, "max".to_string());
+aggregateExpression!(Min, "min".to_string());
+
+// Count Expression
+
+struct Count<T: LogicalExpression> {
+    name: String,
+    expr: T,
+}
+
+impl<T: LogicalExpression> Count<T> {
+    pub fn new(expr: T) -> Self {
+        Count {
+            name: "count".to_string(),
+            expr: expr,
+        }
+    }
+}
+
+impl<T: LogicalExpression> LogicalExpression for Count<T> {
+    fn toField<'a, I: LogicalPlan>(&self, input: &I) -> Result<Field, Error> {
+        Ok(Field {
+            name: self.name.clone(),
+            data_type: self.expr.toField(input)?.data_type,
+        })
+    }
+}
+
+impl<T: LogicalExpression> fmt::Display for Count<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} ({})", self.name, self.expr)
+    }
+}

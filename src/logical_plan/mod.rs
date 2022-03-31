@@ -160,3 +160,47 @@ impl<E: logical_expression::LogicalExpression> LogicalPlan for Selection<E> {
         Some(&self.children)
     }
 }
+
+// Aggregate
+struct Aggregate<E: logical_expression::LogicalExpression + fmt::Display> {
+    groupExprs: Vec<E>,
+    aggregateExprs: Vec<E>,
+    children: [Box<dyn LogicalPlan>; 1],
+}
+
+impl<E: logical_expression::LogicalExpression> Aggregate<E> {
+    fn new(input: Box<dyn LogicalPlan>, groupExprs: Vec<E>, aggregateExprs: Vec<E>) -> Self {
+        Aggregate {
+            groupExprs: groupExprs,
+            aggregateExprs: aggregateExprs,
+            children: [input],
+        }
+    }
+}
+
+impl<E: logical_expression::LogicalExpression + fmt::Display> fmt::Display for Aggregate<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Aggregate: {}",
+            self.groupExprs
+                .iter()
+                .chain(self.aggregateExprs.iter())
+                .map(|expr| format!("{}, ", expr))
+                .collect::<String>()
+        )
+    }
+}
+
+impl<E: logical_expression::LogicalExpression> LogicalPlan for Aggregate<E> {
+    fn schema(&self) -> Result<Schema, Error> {
+        self.groupExprs
+            .iter()
+            .chain(self.aggregateExprs.iter())
+            .map(|expr| expr.toField(&*self.children[0]))
+            .collect::<Result<Schema, Error>>()
+    }
+    fn children(&self) -> Option<&[Box<dyn LogicalPlan>]> {
+        Some(&self.children)
+    }
+}

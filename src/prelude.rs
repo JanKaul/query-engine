@@ -8,14 +8,14 @@ pub fn col(name: &str) -> Column {
     Column::new(name.to_string())
 }
 
-pub fn litString(name: &str) -> LiteralString {
+pub fn lit_string(name: &str) -> LiteralString {
     LiteralString::new(name.to_string())
 }
 
-pub fn litInt(value: i32) -> LiteralInteger {
+pub fn lit_int(value: i32) -> LiteralInteger {
     LiteralInteger::new(value)
 }
 
-pub fn litFloat(value: f64) -> LiteralFloat {
+pub fn lit_float(value: f64) -> LiteralFloat {
     LiteralFloat::new(value)
 }

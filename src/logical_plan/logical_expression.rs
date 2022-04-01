@@ -10,7 +10,7 @@ use crate::error::Error;
 use super::LogicalPlan;
 
 pub trait LogicalExpression: fmt::Display {
-    fn toField(&self, input: &Box<dyn LogicalPlan>) -> Result<Field, Error>;
+    fn to_field(&self, input: &Box<dyn LogicalPlan>) -> Result<Field, Error>;
 }
 
 // Column expression
@@ -25,7 +25,7 @@ impl Column {
 }
 
 impl LogicalExpression for Column {
-    fn toField(&self, input: &Box<dyn LogicalPlan>) -> Result<Field, Error> {
+    fn to_field(&self, input: &Box<dyn LogicalPlan>) -> Result<Field, Error> {
         input
             .schema()?
             .fields
@@ -56,7 +56,7 @@ impl LiteralString {
 }
 
 impl LogicalExpression for LiteralString {
-    fn toField(&self, input: &Box<dyn LogicalPlan>) -> Result<Field, Error> {
+    fn to_field(&self, _input: &Box<dyn LogicalPlan>) -> Result<Field, Error> {
         Ok(Field {
             name: self.value.clone(),
             data_type: datatypes::DataType::Utf8,
@@ -83,7 +83,7 @@ impl LiteralInteger {
 }
 
 impl LogicalExpression for LiteralInteger {
-    fn toField(&self, input: &Box<dyn LogicalPlan>) -> Result<Field, Error> {
+    fn to_field(&self, _input: &Box<dyn LogicalPlan>) -> Result<Field, Error> {
         Ok(Field {
             name: self.value.to_string(),
             data_type: datatypes::DataType::Int32,
@@ -110,7 +110,7 @@ impl LiteralFloat {
 }
 
 impl LogicalExpression for LiteralFloat {
-    fn toField(&self, input: &Box<dyn LogicalPlan>) -> Result<Field, Error> {
+    fn to_field(&self, _input: &Box<dyn LogicalPlan>) -> Result<Field, Error> {
         Ok(Field {
             name: self.value.to_string(),
             data_type: datatypes::DataType::Utf8,
@@ -149,7 +149,7 @@ macro_rules! booleanBinaryExpression {
         }
 
         impl<L: LogicalExpression, R: LogicalExpression> LogicalExpression for $i<L, R> {
-            fn toField(&self, input: &Box<dyn LogicalPlan>) -> Result<Field, Error> {
+            fn to_field(&self, _input: &Box<dyn LogicalPlan>) -> Result<Field, Error> {
                 Ok(Field {
                     name: self.name.clone(),
                     data_type: datatypes::DataType::Boolean,
@@ -202,10 +202,10 @@ macro_rules! mathExpression {
         }
 
         impl<L: LogicalExpression, R: LogicalExpression> LogicalExpression for $i<L, R> {
-            fn toField(&self, input: &Box<dyn LogicalPlan>) -> Result<Field, Error> {
+            fn to_field(&self, input: &Box<dyn LogicalPlan>) -> Result<Field, Error> {
                 Ok(Field {
                     name: self.name.clone(),
-                    data_type: self.left.toField(input)?.data_type,
+                    data_type: self.left.to_field(input)?.data_type,
                     is_nullable: false,
                     metadata: Metadata::default(),
                 })
@@ -247,10 +247,10 @@ macro_rules! aggregateExpression {
         }
 
         impl<T: LogicalExpression> LogicalExpression for $i<T> {
-            fn toField(&self, input: &Box<dyn LogicalPlan>) -> Result<Field, Error> {
+            fn to_field(&self, input: &Box<dyn LogicalPlan>) -> Result<Field, Error> {
                 Ok(Field {
                     name: self.name.clone(),
-                    data_type: self.expr.toField(input)?.data_type,
+                    data_type: self.expr.to_field(input)?.data_type,
                     is_nullable: false,
                     metadata: Metadata::default(),
                 })
@@ -289,10 +289,10 @@ impl<T: LogicalExpression> Count<T> {
 }
 
 impl<T: LogicalExpression> LogicalExpression for Count<T> {
-    fn toField(&self, input: &Box<dyn LogicalPlan>) -> Result<Field, Error> {
+    fn to_field(&self, input: &Box<dyn LogicalPlan>) -> Result<Field, Error> {
         Ok(Field {
             name: self.name.clone(),
-            data_type: self.expr.toField(input)?.data_type,
+            data_type: self.expr.to_field(input)?.data_type,
             is_nullable: false,
             metadata: Metadata::default(),
         })

@@ -1,10 +1,9 @@
 use arrow2::datatypes::Schema;
 
 use crate::{
-    data_source::{DataSource, ParquetDataSource},
+    data_source::ParquetDataSource,
     logical_plan::{
-        logical_expression::{AggregateExpression, LogicalExpression},
-        Aggregate, LogicalPlan, Projection, Scan, Selection,
+        logical_expression::LogicalExpression, Aggregate, LogicalPlan, Projection, Scan, Selection,
     },
 };
 

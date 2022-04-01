@@ -3,7 +3,7 @@ use crate::error::Error;
 use arrow2::datatypes::{Field, Schema};
 use std::fmt;
 
-use self::logical_expression::{AggregateExpression, LogicalExpression};
+use self::logical_expression::LogicalExpression;
 
 pub mod logical_expression;
 pub trait LogicalPlan: fmt::Display {
@@ -103,7 +103,7 @@ impl Projection {
     ) -> Schema {
         exprs
             .iter()
-            .map(|expr| expr.toField(input))
+            .map(|expr| expr.to_field(input))
             .collect::<Result<Vec<Field>, Error>>()
             .map(|x| x.into())
             .unwrap()
@@ -150,7 +150,7 @@ impl Selection {
     }
 
     fn derive_schema(expr: &Box<dyn LogicalExpression>, input: &Box<dyn LogicalPlan>) -> Schema {
-        expr.toField(input)
+        expr.to_field(input)
             .map(|x| vec![x])
             .map(|x| x.into())
             .unwrap()
@@ -202,7 +202,7 @@ impl Aggregate {
         group_exprs
             .iter()
             .chain(aggregate_exprs.iter())
-            .map(|expr| expr.toField(input))
+            .map(|expr| expr.to_field(input))
             .collect::<Result<Vec<Field>, Error>>()
             .map(|x| x.into())
             .unwrap()

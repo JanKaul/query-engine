@@ -35,7 +35,7 @@ impl DataSource for ParquetDataSource {
     fn schema(&self) -> Schema {
         infer_schema(&self.metadata).unwrap()
     }
-    fn scan<V: ColumnVector>(&self, projection: Vec<String>) -> &[RecordBatch<V>] {
+    fn scan<V: ColumnVector>(&self, _projection: Vec<String>) -> &[RecordBatch<V>] {
         todo!()
     }
 }

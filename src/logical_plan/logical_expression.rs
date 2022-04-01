@@ -10,22 +10,22 @@ use crate::error::Error;
 use super::LogicalPlan;
 
 pub trait LogicalExpression: fmt::Display {
-    fn toField<'a, T: LogicalPlan + ?Sized>(&self, input: &T) -> Result<Field, Error>;
+    fn toField(&self, input: &Box<dyn LogicalPlan>) -> Result<Field, Error>;
 }
 
 // Column expression
-struct Column {
+pub struct Column {
     name: String,
 }
 
 impl Column {
-    fn new(name: String) -> Self {
+    pub fn new(name: String) -> Self {
         Column { name: name }
     }
 }
 
 impl LogicalExpression for Column {
-    fn toField<'a, T: LogicalPlan + ?Sized>(&self, input: &T) -> Result<Field, Error> {
+    fn toField(&self, input: &Box<dyn LogicalPlan>) -> Result<Field, Error> {
         input
             .schema()?
             .fields
@@ -45,18 +45,18 @@ impl fmt::Display for Column {
 
 // LiteralString expression
 
-struct LiteralString {
+pub struct LiteralString {
     value: String,
 }
 
 impl LiteralString {
-    fn new(value: String) -> Self {
+    pub fn new(value: String) -> Self {
         LiteralString { value: value }
     }
 }
 
 impl LogicalExpression for LiteralString {
-    fn toField<'a, T: LogicalPlan + ?Sized>(&self, _input: &T) -> Result<Field, Error> {
+    fn toField(&self, input: &Box<dyn LogicalPlan>) -> Result<Field, Error> {
         Ok(Field {
             name: self.value.clone(),
             data_type: datatypes::DataType::Utf8,
@@ -72,11 +72,65 @@ impl fmt::Display for LiteralString {
     }
 }
 
+pub struct LiteralInteger {
+    value: i32,
+}
+
+impl LiteralInteger {
+    pub fn new(value: i32) -> Self {
+        LiteralInteger { value: value }
+    }
+}
+
+impl LogicalExpression for LiteralInteger {
+    fn toField(&self, input: &Box<dyn LogicalPlan>) -> Result<Field, Error> {
+        Ok(Field {
+            name: self.value.to_string(),
+            data_type: datatypes::DataType::Int32,
+            is_nullable: false,
+            metadata: Metadata::default(),
+        })
+    }
+}
+
+impl fmt::Display for LiteralInteger {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "'{}'", self.value)
+    }
+}
+
+pub struct LiteralFloat {
+    value: f64,
+}
+
+impl LiteralFloat {
+    pub fn new(value: f64) -> Self {
+        LiteralFloat { value: value }
+    }
+}
+
+impl LogicalExpression for LiteralFloat {
+    fn toField(&self, input: &Box<dyn LogicalPlan>) -> Result<Field, Error> {
+        Ok(Field {
+            name: self.value.to_string(),
+            data_type: datatypes::DataType::Utf8,
+            is_nullable: false,
+            metadata: Metadata::default(),
+        })
+    }
+}
+
+impl fmt::Display for LiteralFloat {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "'{}'", self.value)
+    }
+}
+
 // BinaryExpression expression
 
 macro_rules! booleanBinaryExpression {
     ($i: ident, $name: expr, $op: expr) => {
-        struct $i<L: LogicalExpression, R: LogicalExpression> {
+        pub struct $i<L: LogicalExpression, R: LogicalExpression> {
             name: String,
             op: String,
             left: L,
@@ -95,7 +149,7 @@ macro_rules! booleanBinaryExpression {
         }
 
         impl<L: LogicalExpression, R: LogicalExpression> LogicalExpression for $i<L, R> {
-            fn toField<'a, T: LogicalPlan + ?Sized>(&self, _input: &T) -> Result<Field, Error> {
+            fn toField(&self, input: &Box<dyn LogicalPlan>) -> Result<Field, Error> {
                 Ok(Field {
                     name: self.name.clone(),
                     data_type: datatypes::DataType::Boolean,
@@ -129,7 +183,7 @@ booleanBinaryExpression!(Or, "or".to_string(), "||".to_string());
 
 macro_rules! mathExpression {
     ($i: ident, $name: expr, $op: expr) => {
-        struct $i<L: LogicalExpression, R: LogicalExpression> {
+        pub struct $i<L: LogicalExpression, R: LogicalExpression> {
             name: String,
             op: String,
             left: L,
@@ -148,7 +202,7 @@ macro_rules! mathExpression {
         }
 
         impl<L: LogicalExpression, R: LogicalExpression> LogicalExpression for $i<L, R> {
-            fn toField<'a, T: LogicalPlan + ?Sized>(&self, input: &T) -> Result<Field, Error> {
+            fn toField(&self, input: &Box<dyn LogicalPlan>) -> Result<Field, Error> {
                 Ok(Field {
                     name: self.name.clone(),
                     data_type: self.left.toField(input)?.data_type,
@@ -174,9 +228,11 @@ mathExpression!(Mod, "mod".to_string(), "%".to_string());
 
 // AggregateExpressions
 
+pub trait AggregateExpression: LogicalExpression {}
+
 macro_rules! aggregateExpression {
     ($i: ident, $name: expr) => {
-        struct $i<T: LogicalExpression> {
+        pub struct $i<T: LogicalExpression> {
             name: String,
             expr: T,
         }
@@ -191,7 +247,7 @@ macro_rules! aggregateExpression {
         }
 
         impl<T: LogicalExpression> LogicalExpression for $i<T> {
-            fn toField<'a, I: LogicalPlan + ?Sized>(&self, input: &I) -> Result<Field, Error> {
+            fn toField(&self, input: &Box<dyn LogicalPlan>) -> Result<Field, Error> {
                 Ok(Field {
                     name: self.name.clone(),
                     data_type: self.expr.toField(input)?.data_type,
@@ -200,6 +256,8 @@ macro_rules! aggregateExpression {
                 })
             }
         }
+
+        impl<T: LogicalExpression> AggregateExpression for $i<T> {}
 
         impl<T: LogicalExpression> fmt::Display for $i<T> {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -216,7 +274,7 @@ aggregateExpression!(Min, "min".to_string());
 
 // Count Expression
 
-struct Count<T: LogicalExpression> {
+pub struct Count<T: LogicalExpression> {
     name: String,
     expr: T,
 }
@@ -231,7 +289,7 @@ impl<T: LogicalExpression> Count<T> {
 }
 
 impl<T: LogicalExpression> LogicalExpression for Count<T> {
-    fn toField<'a, I: LogicalPlan + ?Sized>(&self, input: &I) -> Result<Field, Error> {
+    fn toField(&self, input: &Box<dyn LogicalPlan>) -> Result<Field, Error> {
         Ok(Field {
             name: self.name.clone(),
             data_type: self.expr.toField(input)?.data_type,
@@ -245,4 +303,53 @@ impl<T: LogicalExpression> fmt::Display for Count<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} ({})", self.name, self.expr)
     }
+}
+
+pub trait LogicalExpressionMethods: LogicalExpression {
+    fn eq<T: LogicalExpression>(self, other: T) -> Eq<Self, T>
+    where
+        Self: Sized;
+    fn neq<T: LogicalExpression>(self, other: T) -> Neq<Self, T>
+    where
+        Self: Sized;
+    fn gt<T: LogicalExpression>(self, other: T) -> Gt<Self, T>
+    where
+        Self: Sized;
+    fn gteq<T: LogicalExpression>(self, other: T) -> GtEq<Self, T>
+    where
+        Self: Sized;
+    fn lt<T: LogicalExpression>(self, other: T) -> Lt<Self, T>
+    where
+        Self: Sized;
+    fn lteq<T: LogicalExpression>(self, other: T) -> LtEq<Self, T>
+    where
+        Self: Sized;
+    fn and<T: LogicalExpression>(self, other: T) -> And<Self, T>
+    where
+        Self: Sized;
+    fn or<T: LogicalExpression>(self, other: T) -> Or<Self, T>
+    where
+        Self: Sized;
+}
+
+macro_rules! booleanMethod {
+    ($name: ident, $t: ident) => {
+        fn $name<O: LogicalExpression>(self, other: O) -> $t<Self, O>
+        where
+            Self: Sized,
+        {
+            $t::new(self, other)
+        }
+    };
+}
+
+impl<T: LogicalExpression> LogicalExpressionMethods for T {
+    booleanMethod!(eq, Eq);
+    booleanMethod!(neq, Neq);
+    booleanMethod!(gt, Gt);
+    booleanMethod!(gteq, GtEq);
+    booleanMethod!(lt, Lt);
+    booleanMethod!(lteq, LtEq);
+    booleanMethod!(and, And);
+    booleanMethod!(or, Or);
 }

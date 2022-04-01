@@ -3,33 +3,22 @@ use crate::error::Error;
 use arrow2::datatypes::{Field, Schema};
 use std::fmt;
 
-mod logical_expression;
+use self::logical_expression::{AggregateExpression, LogicalExpression};
+
+pub mod logical_expression;
 pub trait LogicalPlan: fmt::Display {
     fn schema(&self) -> Result<&Schema, Error>;
     fn children(&self) -> Option<&[Box<dyn LogicalPlan>]>;
 }
 
-fn format_children(plan: &Box<dyn LogicalPlan>, indent: usize) -> String {
+pub fn format_logical_plan(plan: &Box<dyn LogicalPlan>, indent: usize) -> String {
     let mut result = String::new();
-    (0..indent).for_each(|_| result.push_str("\t"));
+    (0..indent).for_each(|_| result.push_str(" \t"));
     result.push_str(&format!("{}", plan));
-    result.push_str("\n");
+    result.push_str(" \n");
     plan.children().map(|x| {
         x.iter()
-            .for_each(|x| result.push_str(&format_children(&*x, indent + 1)));
-        ()
-    });
-    result
-}
-
-pub fn format_logical_plan<T: LogicalPlan>(plan: &T, indent: usize) -> String {
-    let mut result = String::new();
-    (0..indent).for_each(|_| result.push_str("\t"));
-    result.push_str(&format!("{}", plan));
-    result.push_str("\n");
-    plan.children().map(|x| {
-        x.iter()
-            .for_each(|x| result.push_str(&format_children(&*x, indent + 1)));
+            .for_each(|x| result.push_str(&format_logical_plan(&*x, indent + 1)));
         ()
     });
     result
@@ -93,14 +82,14 @@ impl<D: DataSource> LogicalPlan for Scan<D> {
 }
 
 // Projection
-struct Projection<E: logical_expression::LogicalExpression> {
-    exprs: Vec<E>,
+pub struct Projection {
+    exprs: Vec<Box<dyn LogicalExpression>>,
     children: [Box<dyn LogicalPlan>; 1],
     schema: Schema,
 }
 
-impl<E: logical_expression::LogicalExpression> Projection<E> {
-    fn new(input: Box<dyn LogicalPlan>, exprs: Vec<E>) -> Self {
+impl Projection {
+    pub fn new(input: Box<dyn LogicalPlan>, exprs: Vec<Box<dyn LogicalExpression>>) -> Self {
         Projection {
             schema: Self::derive_schema(&exprs, &input),
             exprs: exprs,
@@ -108,17 +97,20 @@ impl<E: logical_expression::LogicalExpression> Projection<E> {
         }
     }
 
-    fn derive_schema(exprs: &Vec<E>, input: &Box<dyn LogicalPlan>) -> Schema {
+    fn derive_schema(
+        exprs: &Vec<Box<dyn LogicalExpression>>,
+        input: &Box<dyn LogicalPlan>,
+    ) -> Schema {
         exprs
             .iter()
-            .map(|expr| expr.toField(&**input))
+            .map(|expr| expr.toField(input))
             .collect::<Result<Vec<Field>, Error>>()
             .map(|x| x.into())
             .unwrap()
     }
 }
 
-impl<E: logical_expression::LogicalExpression> fmt::Display for Projection<E> {
+impl fmt::Display for Projection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -131,7 +123,7 @@ impl<E: logical_expression::LogicalExpression> fmt::Display for Projection<E> {
     }
 }
 
-impl<E: logical_expression::LogicalExpression> LogicalPlan for Projection<E> {
+impl LogicalPlan for Projection {
     fn schema(&self) -> Result<&Schema, Error> {
         Ok(&self.schema)
     }
@@ -142,14 +134,14 @@ impl<E: logical_expression::LogicalExpression> LogicalPlan for Projection<E> {
 
 // Selection
 
-struct Selection<E: logical_expression::LogicalExpression + fmt::Display> {
-    expr: E,
+pub struct Selection {
+    expr: Box<dyn LogicalExpression>,
     children: [Box<dyn LogicalPlan>; 1],
     schema: Schema,
 }
 
-impl<E: logical_expression::LogicalExpression> Selection<E> {
-    fn new(input: Box<dyn LogicalPlan>, expr: E) -> Self {
+impl Selection {
+    pub fn new(input: Box<dyn LogicalPlan>, expr: Box<dyn LogicalExpression>) -> Self {
         Selection {
             schema: Self::derive_schema(&expr, &input),
             expr: expr,
@@ -157,21 +149,21 @@ impl<E: logical_expression::LogicalExpression> Selection<E> {
         }
     }
 
-    fn derive_schema(expr: &E, input: &Box<dyn LogicalPlan>) -> Schema {
-        expr.toField(&**input)
+    fn derive_schema(expr: &Box<dyn LogicalExpression>, input: &Box<dyn LogicalPlan>) -> Schema {
+        expr.toField(input)
             .map(|x| vec![x])
             .map(|x| x.into())
             .unwrap()
     }
 }
 
-impl<E: logical_expression::LogicalExpression + fmt::Display> fmt::Display for Selection<E> {
+impl fmt::Display for Selection {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Selection: {}", format!("{}, ", self.expr))
     }
 }
 
-impl<E: logical_expression::LogicalExpression> LogicalPlan for Selection<E> {
+impl LogicalPlan for Selection {
     fn schema(&self) -> Result<&Schema, Error> {
         Ok(&self.schema)
     }
@@ -181,15 +173,19 @@ impl<E: logical_expression::LogicalExpression> LogicalPlan for Selection<E> {
 }
 
 // Aggregate
-struct Aggregate<E: logical_expression::LogicalExpression + fmt::Display> {
-    group_exprs: Vec<E>,
-    aggregate_exprs: Vec<E>,
+pub struct Aggregate {
+    group_exprs: Vec<Box<dyn LogicalExpression>>,
+    aggregate_exprs: Vec<Box<dyn LogicalExpression>>,
     children: [Box<dyn LogicalPlan>; 1],
     schema: Schema,
 }
 
-impl<E: logical_expression::LogicalExpression> Aggregate<E> {
-    fn new(input: Box<dyn LogicalPlan>, group_exprs: Vec<E>, aggregate_exprs: Vec<E>) -> Self {
+impl Aggregate {
+    pub fn new(
+        input: Box<dyn LogicalPlan>,
+        group_exprs: Vec<Box<dyn LogicalExpression>>,
+        aggregate_exprs: Vec<Box<dyn LogicalExpression>>,
+    ) -> Self {
         Aggregate {
             schema: Self::derive_schema(&group_exprs, &aggregate_exprs, &input),
             group_exprs: group_exprs,
@@ -199,21 +195,21 @@ impl<E: logical_expression::LogicalExpression> Aggregate<E> {
     }
 
     fn derive_schema(
-        group_exprs: &Vec<E>,
-        aggregate_exprs: &Vec<E>,
+        group_exprs: &Vec<Box<dyn LogicalExpression>>,
+        aggregate_exprs: &Vec<Box<dyn LogicalExpression>>,
         input: &Box<dyn LogicalPlan>,
     ) -> Schema {
         group_exprs
             .iter()
             .chain(aggregate_exprs.iter())
-            .map(|expr| expr.toField(&**input))
+            .map(|expr| expr.toField(input))
             .collect::<Result<Vec<Field>, Error>>()
             .map(|x| x.into())
             .unwrap()
     }
 }
 
-impl<E: logical_expression::LogicalExpression + fmt::Display> fmt::Display for Aggregate<E> {
+impl fmt::Display for Aggregate {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -227,7 +223,7 @@ impl<E: logical_expression::LogicalExpression + fmt::Display> fmt::Display for A
     }
 }
 
-impl<E: logical_expression::LogicalExpression> LogicalPlan for Aggregate<E> {
+impl LogicalPlan for Aggregate {
     fn schema(&self) -> Result<&Schema, Error> {
         Ok(&self.schema)
     }

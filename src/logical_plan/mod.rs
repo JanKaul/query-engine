@@ -22,7 +22,7 @@ fn format_children(plan: &Box<dyn LogicalPlan>, indent: usize) -> String {
     result
 }
 
-fn format_logical_plan<T: LogicalPlan>(plan: &T, indent: usize) -> String {
+pub fn format_logical_plan<T: LogicalPlan>(plan: &T, indent: usize) -> String {
     let mut result = String::new();
     (0..indent).for_each(|_| result.push_str("\t"));
     result.push_str(&format!("{}", plan));
@@ -37,7 +37,7 @@ fn format_logical_plan<T: LogicalPlan>(plan: &T, indent: usize) -> String {
 
 // Scan logical plan
 
-struct Scan<D: DataSource> {
+pub struct Scan<D: DataSource> {
     path: String,
     data_source: D,
     projection: Option<Vec<String>>,
@@ -45,7 +45,7 @@ struct Scan<D: DataSource> {
 }
 
 impl<D: DataSource> Scan<D> {
-    fn new(path: &str, data_source: D, projection: Option<Vec<String>>) -> Self {
+    pub fn new(path: &str, data_source: D, projection: Option<Vec<String>>) -> Self {
         Scan {
             path: path.to_string(),
             schema: Self::derive_schema(&data_source, &projection),

@@ -1,8 +1,11 @@
 use std::fmt;
 
-use arrow2::datatypes;
+use arrow2::{
+    datatypes,
+    datatypes::{Field, Metadata},
+};
 
-use crate::{error::Error, schema::Field};
+use crate::error::Error;
 
 use super::LogicalPlan;
 
@@ -25,6 +28,7 @@ impl LogicalExpression for Column {
     fn toField<'a, T: LogicalPlan + ?Sized>(&self, input: &T) -> Result<Field, Error> {
         input
             .schema()?
+            .fields
             .iter()
             .filter(|x| x.name == self.name)
             .next()
@@ -56,6 +60,8 @@ impl LogicalExpression for LiteralString {
         Ok(Field {
             name: self.value.clone(),
             data_type: datatypes::DataType::Utf8,
+            is_nullable: false,
+            metadata: Metadata::default(),
         })
     }
 }
@@ -93,6 +99,8 @@ macro_rules! booleanBinaryExpression {
                 Ok(Field {
                     name: self.name.clone(),
                     data_type: datatypes::DataType::Boolean,
+                    is_nullable: false,
+                    metadata: Metadata::default(),
                 })
             }
         }
@@ -144,6 +152,8 @@ macro_rules! mathExpression {
                 Ok(Field {
                     name: self.name.clone(),
                     data_type: self.left.toField(input)?.data_type,
+                    is_nullable: false,
+                    metadata: Metadata::default(),
                 })
             }
         }
@@ -185,6 +195,8 @@ macro_rules! aggregateExpression {
                 Ok(Field {
                     name: self.name.clone(),
                     data_type: self.expr.toField(input)?.data_type,
+                    is_nullable: false,
+                    metadata: Metadata::default(),
                 })
             }
         }
@@ -223,6 +235,8 @@ impl<T: LogicalExpression> LogicalExpression for Count<T> {
         Ok(Field {
             name: self.name.clone(),
             data_type: self.expr.toField(input)?.data_type,
+            is_nullable: false,
+            metadata: Metadata::default(),
         })
     }
 }

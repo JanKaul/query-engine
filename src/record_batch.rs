@@ -1,6 +1,6 @@
 use crate::column_vector::ColumnVector;
 use crate::error::Error;
-use crate::schema::Schema;
+use arrow2::datatypes::Schema;
 
 pub struct RecordBatch<V: ColumnVector> {
     schema: Schema,

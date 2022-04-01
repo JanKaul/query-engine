@@ -1,6 +1,6 @@
 use crate::data_source::DataSource;
 use crate::error::Error;
-use crate::schema::Schema;
+use arrow2::datatypes::{Field, Schema};
 use std::fmt;
 
 mod logical_expression;
@@ -58,10 +58,12 @@ impl<D: DataSource> Scan<D> {
         match projection {
             Some(pro) => data_source
                 .schema()
+                .fields
                 .iter()
                 .filter(|x| pro.contains(&x.name))
                 .map(|y| y.clone())
-                .collect(),
+                .collect::<Vec<Field>>()
+                .into(),
             None => data_source.schema(),
         }
     }
@@ -123,7 +125,8 @@ impl<E: logical_expression::LogicalExpression> LogicalPlan for Projection<E> {
         self.exprs
             .iter()
             .map(|expr| expr.toField(&*self.children[0]))
-            .collect::<Result<Schema, Error>>()
+            .collect::<Result<Vec<Field>, Error>>()
+            .map(|x| x.into())
     }
     fn children(&self) -> Option<&[Box<dyn LogicalPlan>]> {
         Some(&self.children)
@@ -154,7 +157,10 @@ impl<E: logical_expression::LogicalExpression + fmt::Display> fmt::Display for S
 
 impl<E: logical_expression::LogicalExpression> LogicalPlan for Selection<E> {
     fn schema(&self) -> Result<Schema, Error> {
-        self.expr.toField(&*self.children[0]).map(|x| vec![x])
+        self.expr
+            .toField(&*self.children[0])
+            .map(|x| vec![x])
+            .map(|x| x.into())
     }
     fn children(&self) -> Option<&[Box<dyn LogicalPlan>]> {
         Some(&self.children)
@@ -198,7 +204,8 @@ impl<E: logical_expression::LogicalExpression> LogicalPlan for Aggregate<E> {
             .iter()
             .chain(self.aggregateExprs.iter())
             .map(|expr| expr.toField(&*self.children[0]))
-            .collect::<Result<Schema, Error>>()
+            .collect::<Result<Vec<Field>, Error>>()
+            .map(|x| x.into())
     }
     fn children(&self) -> Option<&[Box<dyn LogicalPlan>]> {
         Some(&self.children)

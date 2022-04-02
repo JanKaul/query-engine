@@ -8,7 +8,7 @@ pub trait ColumnVector {
     fn size(&self) -> usize;
 }
 
-struct LiteralValueVector<T> {
+pub struct LiteralValueVector<T> {
     data_type: datatypes::DataType,
     value: T,
 }
@@ -27,5 +27,14 @@ impl<T> ColumnVector for LiteralValueVector<T> {
     }
     fn size(&self) -> usize {
         1
+    }
+}
+
+impl<T> LiteralValueVector<T> {
+    pub fn new(data_type: datatypes::DataType, value: T) -> Self {
+        LiteralValueVector {
+            data_type: data_type,
+            value: value,
+        }
     }
 }

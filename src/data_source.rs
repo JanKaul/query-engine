@@ -8,7 +8,10 @@ use arrow2::io::parquet::read::{infer_schema, read_metadata, FileMetaData};
 
 pub trait DataSource {
     fn schema(&self) -> Schema;
-    fn scan<V: ColumnVector>(&self, projection: Vec<String>) -> &[RecordBatch<V>];
+    fn scan<T, V: ColumnVector<DataType = T>>(
+        &self,
+        projection: Vec<String>,
+    ) -> &[RecordBatch<T, V>];
 }
 
 pub struct ParquetDataSource {
@@ -35,7 +38,10 @@ impl DataSource for ParquetDataSource {
     fn schema(&self) -> Schema {
         infer_schema(&self.metadata).unwrap()
     }
-    fn scan<V: ColumnVector>(&self, _projection: Vec<String>) -> &[RecordBatch<V>] {
+    fn scan<T, V: ColumnVector<DataType = T>>(
+        &self,
+        projection: Vec<String>,
+    ) -> &[RecordBatch<T, V>] {
         todo!()
     }
 }

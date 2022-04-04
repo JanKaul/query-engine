@@ -1,4 +1,7 @@
-use std::fmt::{self, Display};
+use std::{
+    fmt::{self, Display},
+    marker::PhantomData,
+};
 
 use arrow2::datatypes::DataType;
 
@@ -8,21 +11,45 @@ use crate::{
     record_batch::RecordBatch,
 };
 
-trait Expression<T, V: ColumnVector<DataType = T>>: Display {
-    fn evaluate<'a>(&'a self, input: &'a RecordBatch<T, V>) -> Result<&'a V, Error>;
+trait Expression: Display {
+    type InputType;
+    type InputVector: ColumnVector<DataType = Self::InputType>;
+    type OutputType;
+    type OutputVector: ColumnVector<DataType = Self::InputType>;
+    fn evaluate<'a>(
+        self,
+        input: RecordBatch<Self::InputType, Self::InputVector>,
+    ) -> Result<Self::OutputType, Error>;
 }
 
-pub struct ColumnExpression {
+pub struct ColumnExpression<
+    TI,
+    VI: ColumnVector<DataType = TI>,
+    TO,
+    VO: ColumnVector<DataType = TO>,
+> {
     index: usize,
+    input: PhantomData<VI>,
+    output: PhantomData<VO>,
 }
 
-impl<T, V: ColumnVector<DataType = T>> Expression<T, V> for ColumnExpression {
-    fn evaluate<'a>(&'a self, input: &'a RecordBatch<T, V>) -> Result<&'a V, Error> {
+impl<TI, VI: ColumnVector<DataType = TI>, TO, VO: ColumnVector<DataType = TO>> Expression
+    for ColumnExpression<TI, VI, TO, VO>
+{
+    type InputType = TI;
+    type InputVector = VI;
+    type OutputType = TO;
+    type OutputVector = VO;
+
+    fn evaluate<'a>(
+        self,
+        input: RecordBatch<Self::InputType, Self::InputVector>,
+    ) -> Result<Self::OutputType, Error> {
         input.field(self.index)
     }
 }
 
-impl fmt::Display for ColumnExpression {
+impl<T, V: ColumnVector<DataType = T>> fmt::Display for ColumnExpression<T, V> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "#{}", self.index)
     }
@@ -40,12 +67,14 @@ impl LiteralStringExpression {
     }
 }
 
-impl Expression<String, LiteralValueVector<String>> for LiteralStringExpression {
+impl Expression for LiteralStringExpression {
+    type InputType = String;
+    type InputVector = LiteralValueVector<String>;
     fn evaluate<'a>(
-        &'a self,
-        _input: &'a RecordBatch<String, LiteralValueVector<String>>,
-    ) -> Result<&'a LiteralValueVector<String>, Error> {
-        Ok(&self.value)
+        self,
+        input: RecordBatch<Self::InputType, Self::InputVector>,
+    ) -> Result<Self::OutputType, Error> {
+        Ok(self.value)
     }
 }
 
@@ -67,12 +96,14 @@ impl LiteralIntegerExpression {
     }
 }
 
-impl Expression<i32, LiteralValueVector<i32>> for LiteralIntegerExpression {
+impl Expression for LiteralIntegerExpression {
+    type InputType = i32;
+    type InputVector = LiteralValueVector<i32>;
     fn evaluate<'a>(
-        &'a self,
-        _input: &'a RecordBatch<i32, LiteralValueVector<i32>>,
-    ) -> Result<&'a LiteralValueVector<i32>, Error> {
-        Ok(&self.value)
+        self,
+        input: RecordBatch<Self::InputType, Self::InputVector>,
+    ) -> Result<Self::OutputType, Error> {
+        Ok(self.value)
     }
 }
 
@@ -94,17 +125,71 @@ impl LiteralFloatExpression {
     }
 }
 
-impl Expression<f64, LiteralValueVector<f64>> for LiteralFloatExpression {
+impl Expression for LiteralFloatExpression {
+    type InputType = f64;
+    type InputVector = LiteralValueVector<f64>;
     fn evaluate<'a>(
-        &'a self,
-        _input: &'a RecordBatch<f64, LiteralValueVector<f64>>,
-    ) -> Result<&'a LiteralValueVector<f64>, Error> {
-        Ok(&self.value)
+        self,
+        input: RecordBatch<Self::InputType, Self::InputVector>,
+    ) -> Result<Self::OutputType, Error> {
+        Ok(self.value)
     }
 }
 
 impl fmt::Display for LiteralFloatExpression {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "#{}", self.value.get_value(0).unwrap())
+    }
+}
+
+pub struct EqExpression<
+    T,
+    V: ColumnVector<DataType = T>,
+    E: Expression<InputType = T, InputVector = V>,
+> {
+    left: E,
+    right: E,
+    phantom: PhantomData<V>,
+}
+
+impl<T, V: ColumnVector<DataType = T>, E: Expression<InputType = T, InputVector = V>> Expression
+    for EqExpression<T, V, E>
+{
+    type InputType = T;
+    type InputVector = V;
+    fn evaluate<'a>(
+        self,
+        input: RecordBatch<Self::InputType, Self::InputVector>,
+    ) -> Result<Self::OutputType, Error> {
+        let l = self.left.evaluate(input)?;
+        let r = self.right.evaluate(input)?;
+        if l.size() == r.size() {
+            Ok(l == r)
+        } else {
+            Err(Error::DifferentSizes(
+                format!("{}", self.left),
+                format!("{}", self.right),
+            ))
+        }
+    }
+}
+
+impl<T, V: ColumnVector<DataType = T>, E: Expression<InputType = T, InputVector = V>>
+    EqExpression<T, V, E>
+{
+    pub fn new(left: E, right: E) -> Self {
+        EqExpression {
+            left: left,
+            right: right,
+            phantom: PhantomData::default(),
+        }
+    }
+}
+
+impl<T, V: ColumnVector<DataType = T>, E: Expression<InputType = T, InputVector = V>> fmt::Display
+    for EqExpression<T, V, E>
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "#Binary Expression")
     }
 }

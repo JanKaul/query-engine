@@ -1,7 +1,8 @@
 use std::fmt::{self, Display};
 
+use arrow2::datatypes::DataType;
 use arrow2::datatypes::PhysicalType::Primitive;
-use arrow2::scalar::BooleanScalar;
+use arrow2::scalar::{BooleanScalar, PrimitiveScalar};
 use arrow2::{
     array::{Array, PrimitiveArray},
     compute,
@@ -44,77 +45,77 @@ impl fmt::Display for ColumnExpression {
     }
 }
 
-// pub struct LiteralStringExpression {
-//     value: Utf8Scalar<i32>,
-// }
+pub struct LiteralStringExpression {
+    value: Utf8Scalar<i32>,
+}
 
-// impl LiteralStringExpression {
-//     pub fn new(value: String) -> Self {
-//         LiteralStringExpression {
-//             value: Utf8Scalar::new(Some(value)),
-//         }
-//     }
-// }
+impl LiteralStringExpression {
+    pub fn new(value: String) -> Self {
+        LiteralStringExpression {
+            value: Utf8Scalar::new(Some(value)),
+        }
+    }
+}
 
-// impl Expression for LiteralStringExpression {
-//     fn evaluate(self, input: RecordBatch) -> Result<Box<dyn Array>, Error> {
-//         Ok(self.value)
-//     }
-// }
+impl Expression for LiteralStringExpression {
+    fn evaluate(self, _input: &RecordBatch) -> Result<ColumnarValue, Error> {
+        Ok(ColumnarValue::Scalar(Box::new(self.value)))
+    }
+}
 
-// impl fmt::Display for LiteralStringExpression {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         write!(f, "#{:?}", self.value)
-//     }
-// }
+impl fmt::Display for LiteralStringExpression {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "#{:?}", self.value)
+    }
+}
 
-// pub struct LiteralIntegerExpression {
-//     value: LiteralValueVector<i32>,
-// }
+pub struct LiteralIntegerExpression {
+    value: PrimitiveScalar<i32>,
+}
 
-// impl LiteralIntegerExpression {
-//     pub fn new(value: i32) -> Self {
-//         LiteralIntegerExpression {
-//             value: LiteralValueVector::new(DataType::Utf8, value),
-//         }
-//     }
-// }
+impl LiteralIntegerExpression {
+    pub fn new(value: i32) -> Self {
+        LiteralIntegerExpression {
+            value: PrimitiveScalar::new(DataType::Int32, Some(value)),
+        }
+    }
+}
 
-// impl Expression for LiteralIntegerExpression {
-//     fn evaluate(self, input: RecordBatch) -> Result<Box<dyn Array>, Error> {
-//         Ok(self.value)
-//     }
-// }
+impl Expression for LiteralIntegerExpression {
+    fn evaluate(self, _input: &RecordBatch) -> Result<ColumnarValue, Error> {
+        Ok(ColumnarValue::Scalar(Box::new(self.value)))
+    }
+}
 
-// impl fmt::Display for LiteralIntegerExpression {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         write!(f, "#{}", self.value.get_value(0).unwrap())
-//     }
-// }
+impl fmt::Display for LiteralIntegerExpression {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "#{:?}", self.value)
+    }
+}
 
-// pub struct LiteralFloatExpression {
-//     value: LiteralValueVector<f64>,
-// }
+pub struct LiteralFloatExpression {
+    value: PrimitiveScalar<f64>,
+}
 
-// impl LiteralFloatExpression {
-//     pub fn new(value: f64) -> Self {
-//         LiteralFloatExpression {
-//             value: LiteralValueVector::new(DataType::Utf8, value),
-//         }
-//     }
-// }
+impl LiteralFloatExpression {
+    pub fn new(value: f64) -> Self {
+        LiteralFloatExpression {
+            value: PrimitiveScalar::new(DataType::Float64, Some(value)),
+        }
+    }
+}
 
-// impl Expression for LiteralFloatExpression {
-//     fn evaluate(self, input: RecordBatch) -> Result<Box<dyn Array>, Error> {
-//         Ok(self.value)
-//     }
-// }
+impl Expression for LiteralFloatExpression {
+    fn evaluate(self, _input: &RecordBatch) -> Result<ColumnarValue, Error> {
+        Ok(ColumnarValue::Scalar(Box::new(self.value)))
+    }
+}
 
-// impl fmt::Display for LiteralFloatExpression {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         write!(f, "#{}", self.value.get_value(0).unwrap())
-//     }
-// }
+impl fmt::Display for LiteralFloatExpression {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "#{:?}", self.value)
+    }
+}
 
 pub struct EqExpression<E: Expression> {
     left: E,

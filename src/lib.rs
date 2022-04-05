@@ -1,4 +1,4 @@
-pub mod column_vector;
+pub mod columnar_value;
 pub mod data_source;
 pub mod dataframe;
 pub mod error;

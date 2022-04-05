@@ -1,22 +1,22 @@
-use crate::column_vector::ColumnVector;
 use crate::error::Error;
+use arrow2::array::Array;
 use arrow2::datatypes::Schema;
 
-pub struct RecordBatch<T, V: ColumnVector<DataType = T>> {
+pub struct RecordBatch {
     schema: Schema,
-    fields: Vec<V>,
+    fields: Vec<Box<dyn Array>>,
 }
 
-impl<T, V: ColumnVector<DataType = T>> RecordBatch<T, V> {
+impl RecordBatch {
     fn row_count(&self) -> usize {
-        self.fields[0].size()
+        self.fields[0].len()
     }
     fn column_count(&self) -> usize {
         self.fields.len()
     }
-    pub fn field(&self, i: usize) -> Result<&V, Error> {
+    pub fn field(&self, i: usize) -> Result<&dyn Array, Error> {
         if i < self.fields.len() {
-            Ok(&self.fields[i])
+            Ok(&*self.fields[i])
         } else {
             Err(Error::ExceedingBoundsError(i))
         }

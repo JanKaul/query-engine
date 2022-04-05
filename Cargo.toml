@@ -6,5 +6,5 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-arrow2 = { version = "0.10.1", features = ["io_parquet"] }
+arrow2 = { version = "0.10.1", features = ["io_parquet", "compute_comparison"] }
 thiserror = "1.0.30"

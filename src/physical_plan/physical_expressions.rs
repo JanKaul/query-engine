@@ -117,52 +117,65 @@ impl fmt::Display for LiteralFloatExpression {
     }
 }
 
-pub struct EqExpression<E: Expression> {
-    left: E,
-    right: E,
-}
+macro_rules! booleanBinaryExpression {
+    ($i: ident, $name1: ident, $name2: ident, $op: ident, $op_name: expr) => {
+        pub struct $i<E: Expression> {
+            left: E,
+            right: E,
+        }
 
-impl<E: Expression> Expression for EqExpression<E> {
-    fn evaluate(self, input: &RecordBatch) -> Result<ColumnarValue, Error> {
-        let l = self.left.evaluate(input)?;
-        let r = self.right.evaluate(input)?;
-        match (l, r) {
-            (ColumnarValue::Array(left), ColumnarValue::Array(right)) => {
-                if left.len() == right.len() {
-                    Ok(ColumnarValue::Array(Box::new(compute::comparison::eq(
-                        &*left, &*right,
-                    ))))
-                } else {
-                    Err(Error::DifferentSizes(
-                        format!("{:?}", left),
-                        format!("{:?}", right),
-                    ))
+        impl<E: Expression> Expression for $i<E> {
+            fn evaluate(self, input: &RecordBatch) -> Result<ColumnarValue, Error> {
+                let l = self.left.evaluate(input)?;
+                let r = self.right.evaluate(input)?;
+                match (l, r) {
+                    (ColumnarValue::Array(left), ColumnarValue::Array(right)) => {
+                        if left.len() == right.len() {
+                            Ok(ColumnarValue::Array(Box::new(compute::comparison::$name1(
+                                &*left, &*right,
+                            ))))
+                        } else {
+                            Err(Error::DifferentSizes(
+                                format!("{:?}", left),
+                                format!("{:?}", right),
+                            ))
+                        }
+                    }
+                    (ColumnarValue::Array(left), ColumnarValue::Scalar(right)) => {
+                        Ok(ColumnarValue::Array(Box::new(compute::comparison::$name2(
+                            &*left, &*right,
+                        ))))
+                    }
+                    (ColumnarValue::Scalar(left), ColumnarValue::Array(right)) => {
+                        Ok(ColumnarValue::Array(Box::new(compute::comparison::$name2(
+                            &*right, &*left,
+                        ))))
+                    }
+                    (ColumnarValue::Scalar(left), ColumnarValue::Scalar(right)) => {
+                        Ok(ColumnarValue::Scalar(Box::new(BooleanScalar::new(Some(
+                            left.$op(&*right),
+                        )))))
+                    }
                 }
             }
-            (ColumnarValue::Array(left), ColumnarValue::Scalar(right)) => Ok(ColumnarValue::Array(
-                Box::new(compute::comparison::eq_scalar(&*left, &*right)),
-            )),
-            (ColumnarValue::Scalar(left), ColumnarValue::Array(right)) => Ok(ColumnarValue::Array(
-                Box::new(compute::comparison::eq_scalar(&*right, &*left)),
-            )),
-            (ColumnarValue::Scalar(left), ColumnarValue::Scalar(right)) => Ok(
-                ColumnarValue::Scalar(Box::new(BooleanScalar::new(Some(left == right)))),
-            ),
         }
-    }
+
+        impl<E: Expression> $i<E> {
+            pub fn new(left: E, right: E) -> Self {
+                $i {
+                    left: left,
+                    right: right,
+                }
+            }
+        }
+
+        impl<E: Expression> fmt::Display for $i<E> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "{} {} {}", self.left, $op_name, self.right)
+            }
+        }
+    };
 }
 
-impl<E: Expression> EqExpression<E> {
-    pub fn new(left: E, right: E) -> Self {
-        EqExpression {
-            left: left,
-            right: right,
-        }
-    }
-}
-
-impl<E: Expression> fmt::Display for EqExpression<E> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} == {}", self.left, self.right)
-    }
-}
+booleanBinaryExpression!(EqExpression, eq, eq_scalar, eq, "==".to_string());
+booleanBinaryExpression!(NeqExpression, neq, neq_scalar, ne, "==".to_string());

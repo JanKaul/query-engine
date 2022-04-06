@@ -1,7 +1,8 @@
 use std::fmt::{self, Display};
+use std::ops::{Add, Div, Mul, Sub};
 
-use arrow2::datatypes::DataType;
 use arrow2::datatypes::PhysicalType::Primitive;
+use arrow2::datatypes::{DataType, PhysicalType};
 use arrow2::scalar::{BooleanScalar, PrimitiveScalar};
 use arrow2::{
     array::{Array, PrimitiveArray},
@@ -176,6 +177,114 @@ macro_rules! booleanBinaryExpression {
         }
     };
 }
-
 booleanBinaryExpression!(EqExpression, eq, eq_scalar, eq, "==".to_string());
 booleanBinaryExpression!(NeqExpression, neq, neq_scalar, ne, "==".to_string());
+
+macro_rules! mathExpression {
+    ($i: ident, $name1: ident, $name2: ident, $op: ident, $op_name: expr) => {
+        pub struct $i<E: Expression> {
+            left: E,
+            right: E,
+        }
+
+        impl<E: Expression> Expression for $i<E> {
+            fn evaluate(self, input: &RecordBatch) -> Result<ColumnarValue, Error> {
+                let left = self.left.evaluate(input)?;
+                let right = self.right.evaluate(input)?;
+                match (left, right) {
+                    (ColumnarValue::Array(left), ColumnarValue::Array(right)) => {
+                        if left.len() == right.len() {
+                            Ok(ColumnarValue::Array(compute::arithmetics::$name1(
+                                &*left, &*right,
+                            )))
+                        } else {
+                            Err(Error::DifferentSizes(
+                                format!("{:?}", left),
+                                format!("{:?}", right),
+                            ))
+                        }
+                    }
+                    (ColumnarValue::Array(left), ColumnarValue::Scalar(right)) => Ok(
+                        ColumnarValue::Array(compute::arithmetics::$name2(&*left, &*right)),
+                    ),
+                    (ColumnarValue::Scalar(left), ColumnarValue::Array(right)) => Ok(
+                        ColumnarValue::Array(compute::arithmetics::$name2(&*right, &*left)),
+                    ),
+                    (ColumnarValue::Scalar(left), ColumnarValue::Scalar(right)) => {
+                        match (
+                            left.data_type().to_physical_type(),
+                            right.data_type().to_physical_type(),
+                        ) {
+                            (
+                                PhysicalType::Primitive(PrimitiveType::Float64),
+                                PhysicalType::Primitive(PrimitiveType::Float64),
+                            ) => {
+                                let (left, right) = (
+                                    left.as_any()
+                                        .downcast_ref::<PrimitiveScalar<f64>>()
+                                        .ok_or(Error::DowncastError)?,
+                                    right
+                                        .as_any()
+                                        .downcast_ref::<PrimitiveScalar<f64>>()
+                                        .ok_or(Error::DowncastError)?,
+                                );
+                                Ok(ColumnarValue::Scalar(Box::new(PrimitiveScalar::new(
+                                    DataType::Float64,
+                                    match (left.value(), right.value()) {
+                                        (Some(left), Some(right)) => Some(left.$op(right)),
+                                        _ => None,
+                                    },
+                                ))))
+                            }
+                            (
+                                PhysicalType::Primitive(PrimitiveType::Int32),
+                                PhysicalType::Primitive(PrimitiveType::Int32),
+                            ) => {
+                                let (left, right) = (
+                                    left.as_any()
+                                        .downcast_ref::<PrimitiveScalar<i32>>()
+                                        .ok_or(Error::DowncastError)?,
+                                    right
+                                        .as_any()
+                                        .downcast_ref::<PrimitiveScalar<i32>>()
+                                        .ok_or(Error::DowncastError)?,
+                                );
+                                Ok(ColumnarValue::Scalar(Box::new(PrimitiveScalar::new(
+                                    DataType::Int32,
+                                    match (left.value(), right.value()) {
+                                        (Some(left), Some(right)) => Some(left.$op(right)),
+                                        _ => None,
+                                    },
+                                ))))
+                            }
+                            _ => Err(Error::PrimitiveTypeNotSuported(format!(
+                                "{:?}",
+                                left.data_type()
+                            ))),
+                        }
+                    }
+                }
+            }
+        }
+
+        impl<E: Expression> $i<E> {
+            pub fn new(left: E, right: E) -> Self {
+                $i {
+                    left: left,
+                    right: right,
+                }
+            }
+        }
+
+        impl<E: Expression> fmt::Display for $i<E> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "{} {} {}", self.left, $op_name, self.right)
+            }
+        }
+    };
+}
+
+mathExpression!(AddExpression, add, add_scalar, add, "+".to_string());
+mathExpression!(SubExpression, sub, sub_scalar, sub, "-".to_string());
+mathExpression!(MulExpression, mul, mul_scalar, mul, "*".to_string());
+mathExpression!(DivExpression, div, div_scalar, div, "/".to_string());

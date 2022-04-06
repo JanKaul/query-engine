@@ -12,6 +12,8 @@ pub enum Error {
     PhysicalTypeNotSuported(String),
     #[error("Primitive type `{0}` is not supported.")]
     PrimitiveTypeNotSuported(String),
+    #[error("Error wile downcasting Array.")]
+    DowncastError,
     #[error("IoError: `{0}`.")]
     IoError(std::io::Error),
     #[error("IoError: `{0}`.")]

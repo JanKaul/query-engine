@@ -14,7 +14,7 @@ use arrow2::{
 use crate::columnar_value::ColumnarValue;
 use crate::{error::Error, record_batch::RecordBatch};
 
-pub trait Expression: Display {
+pub trait PhysicalExpression: Display {
     fn evaluate(self, input: &RecordBatch) -> Result<ColumnarValue, Error>;
 }
 
@@ -22,7 +22,7 @@ pub struct ColumnExpression {
     index: usize,
 }
 
-impl Expression for ColumnExpression {
+impl PhysicalExpression for ColumnExpression {
     fn evaluate(self, input: &RecordBatch) -> Result<ColumnarValue, Error> {
         input
             .field(self.index)
@@ -58,7 +58,7 @@ impl LiteralStringExpression {
     }
 }
 
-impl Expression for LiteralStringExpression {
+impl PhysicalExpression for LiteralStringExpression {
     fn evaluate(self, _input: &RecordBatch) -> Result<ColumnarValue, Error> {
         Ok(ColumnarValue::Scalar(Box::new(self.value)))
     }
@@ -82,7 +82,7 @@ impl LiteralIntegerExpression {
     }
 }
 
-impl Expression for LiteralIntegerExpression {
+impl PhysicalExpression for LiteralIntegerExpression {
     fn evaluate(self, _input: &RecordBatch) -> Result<ColumnarValue, Error> {
         Ok(ColumnarValue::Scalar(Box::new(self.value)))
     }
@@ -106,7 +106,7 @@ impl LiteralFloatExpression {
     }
 }
 
-impl Expression for LiteralFloatExpression {
+impl PhysicalExpression for LiteralFloatExpression {
     fn evaluate(self, _input: &RecordBatch) -> Result<ColumnarValue, Error> {
         Ok(ColumnarValue::Scalar(Box::new(self.value)))
     }
@@ -120,12 +120,12 @@ impl fmt::Display for LiteralFloatExpression {
 
 macro_rules! booleanBinaryExpression {
     ($i: ident, $name1: ident, $name2: ident, $op: ident, $op_name: expr) => {
-        pub struct $i<E: Expression> {
+        pub struct $i<E: PhysicalExpression> {
             left: E,
             right: E,
         }
 
-        impl<E: Expression> Expression for $i<E> {
+        impl<E: PhysicalExpression> PhysicalExpression for $i<E> {
             fn evaluate(self, input: &RecordBatch) -> Result<ColumnarValue, Error> {
                 let l = self.left.evaluate(input)?;
                 let r = self.right.evaluate(input)?;
@@ -161,7 +161,7 @@ macro_rules! booleanBinaryExpression {
             }
         }
 
-        impl<E: Expression> $i<E> {
+        impl<E: PhysicalExpression> $i<E> {
             pub fn new(left: E, right: E) -> Self {
                 $i {
                     left: left,
@@ -170,7 +170,7 @@ macro_rules! booleanBinaryExpression {
             }
         }
 
-        impl<E: Expression> fmt::Display for $i<E> {
+        impl<E: PhysicalExpression> fmt::Display for $i<E> {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(f, "{} {} {}", self.left, $op_name, self.right)
             }
@@ -182,12 +182,12 @@ booleanBinaryExpression!(NeqExpression, neq, neq_scalar, ne, "==".to_string());
 
 macro_rules! mathExpression {
     ($i: ident, $name1: ident, $name2: ident, $op: ident, $op_name: expr) => {
-        pub struct $i<E: Expression> {
+        pub struct $i<E: PhysicalExpression> {
             left: E,
             right: E,
         }
 
-        impl<E: Expression> Expression for $i<E> {
+        impl<E: PhysicalExpression> PhysicalExpression for $i<E> {
             fn evaluate(self, input: &RecordBatch) -> Result<ColumnarValue, Error> {
                 let left = self.left.evaluate(input)?;
                 let right = self.right.evaluate(input)?;
@@ -267,7 +267,7 @@ macro_rules! mathExpression {
             }
         }
 
-        impl<E: Expression> $i<E> {
+        impl<E: PhysicalExpression> $i<E> {
             pub fn new(left: E, right: E) -> Self {
                 $i {
                     left: left,
@@ -276,7 +276,7 @@ macro_rules! mathExpression {
             }
         }
 
-        impl<E: Expression> fmt::Display for $i<E> {
+        impl<E: PhysicalExpression> fmt::Display for $i<E> {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(f, "{} {} {}", self.left, $op_name, self.right)
             }

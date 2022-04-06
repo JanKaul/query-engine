@@ -14,7 +14,7 @@ impl DataSource {
             DataSource::Parquet(ds) => ds.schema(),
         }
     }
-    pub fn scan(self, projection: Vec<String>) -> FileReader<File> {
+    pub fn scan(self, projection: Option<Vec<String>>) -> FileReader<File> {
         match self {
             DataSource::Parquet(ds) => ds.scan(projection),
         }
@@ -45,20 +45,28 @@ impl ParquetDataSource {
     fn schema(&self) -> Schema {
         infer_schema(&self.metadata).unwrap()
     }
-    pub fn scan(self, projection: Vec<String>) -> FileReader<File> {
-        let projection: Vec<usize> = self
-            .schema()
-            .fields
-            .into_iter()
-            .enumerate()
-            .filter_map(|(i, x)| {
-                if projection.contains(&x.name) {
-                    Some(i)
-                } else {
-                    None
-                }
-            })
-            .collect();
-        FileReader::try_new(self.file, Some(&projection), None, None, None).unwrap()
+    pub fn scan(self, projection: Option<Vec<String>>) -> FileReader<File> {
+        let projection: Option<Vec<usize>> = projection.map(|projection| {
+            self.schema()
+                .fields
+                .into_iter()
+                .enumerate()
+                .filter_map(|(i, x)| {
+                    if projection.contains(&x.name) {
+                        Some(i)
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        });
+        FileReader::try_new(
+            self.file,
+            projection.as_ref().map(|x| x.as_slice()),
+            None,
+            None,
+            None,
+        )
+        .unwrap()
     }
 }

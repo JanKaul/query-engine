@@ -36,7 +36,11 @@ impl PhysicalExpression for ColumnExpression {
                         .as_any()
                         .downcast_ref::<PrimitiveArray<i32>>()
                         .map(|y| ColumnarValue::Array(Box::new(y.clone()) as Box<dyn Array>)),
-                    t => None,
+                    Primitive(PrimitiveType::Float64) => x
+                        .as_any()
+                        .downcast_ref::<PrimitiveArray<f64>>()
+                        .map(|y| ColumnarValue::Array(Box::new(y.clone()) as Box<dyn Array>)),
+                    _ => None,
                 }
             })
             .ok_or(Error::PrimitiveTypeNotSuported(format!(

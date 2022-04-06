@@ -23,34 +23,36 @@ impl LogicalPlan {
             LogicalPlan::Aggregate(agg) => agg.schema(),
         }
     }
+    fn children(&self) -> Option<&[LogicalPlan]> {
+        match self {
+            LogicalPlan::Scan(scan) => scan.children(),
+            LogicalPlan::Projection(proj) => proj.children(),
+            LogicalPlan::Selection(sel) => sel.children(),
+            LogicalPlan::Aggregate(agg) => agg.children(),
+        }
+    }
+}
+
+impl fmt::Display for LogicalPlan {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LogicalPlan::Scan(scan) => write!(f, "{}", scan),
+            LogicalPlan::Projection(proj) => write!(f, "{}", proj),
+            LogicalPlan::Selection(sel) => write!(f, "{}", sel),
+            LogicalPlan::Aggregate(agg) => write!(f, "{}", agg),
+        }
+    }
 }
 
 pub fn format_logical_plan(plan: &LogicalPlan, indent: usize) -> String {
     let mut result = String::new();
     (0..indent).for_each(|_| result.push_str(" \t"));
-    match plan {
-        LogicalPlan::Scan(scan) => {
-            result.push_str(&format!("{}", scan));
-            result.push_str(" \n");
-            scan.children()
-                .map(|child| result.push_str(&format_logical_plan(child, indent + 1)));
-        }
-        LogicalPlan::Projection(proj) => {
-            result.push_str(&format!("{}", proj));
-            result.push_str(" \n");
-            result.push_str(&format_logical_plan(proj.children(), indent + 1));
-        }
-        LogicalPlan::Selection(sel) => {
-            result.push_str(&format!("{}", sel));
-            result.push_str(" \n");
-            result.push_str(&format_logical_plan(sel.children(), indent + 1));
-        }
-        LogicalPlan::Aggregate(agg) => {
-            result.push_str(&format!("{}", agg));
-            result.push_str(" \n");
-            result.push_str(&format_logical_plan(agg.children(), indent + 1));
-        }
-    }
+    result.push_str(&format!("{}", plan));
+    result.push_str(" \n");
+    plan.children().map(|x| {
+        x.iter()
+            .for_each(|child| result.push_str(&format_logical_plan(child, indent + 1)))
+    });
     result
 }
 
@@ -106,7 +108,7 @@ impl Scan {
     fn schema(&self) -> Result<&Schema, Error> {
         Ok(&self.schema)
     }
-    fn children(&self) -> Option<&LogicalPlan> {
+    fn children(&self) -> Option<&[LogicalPlan]> {
         None
     }
 }
@@ -114,7 +116,7 @@ impl Scan {
 // Projection
 pub struct Projection {
     exprs: Vec<Box<dyn LogicalExpression>>,
-    children: Box<LogicalPlan>,
+    children: Vec<LogicalPlan>,
     schema: Schema,
 }
 
@@ -123,7 +125,7 @@ impl Projection {
         Projection {
             schema: Self::derive_schema(&exprs, &input),
             exprs: exprs,
-            children: Box::new(input),
+            children: vec![input],
         }
     }
 
@@ -154,8 +156,8 @@ impl Projection {
     fn schema(&self) -> Result<&Schema, Error> {
         Ok(&self.schema)
     }
-    fn children(&self) -> &LogicalPlan {
-        &self.children
+    fn children(&self) -> Option<&[LogicalPlan]> {
+        Some(&self.children)
     }
 }
 
@@ -163,7 +165,7 @@ impl Projection {
 
 pub struct Selection {
     expr: Box<dyn LogicalExpression>,
-    children: Box<LogicalPlan>,
+    children: Vec<LogicalPlan>,
     schema: Schema,
 }
 
@@ -172,7 +174,7 @@ impl Selection {
         Selection {
             schema: Self::derive_schema(&expr, &input),
             expr: expr,
-            children: Box::new(input),
+            children: vec![input],
         }
     }
 
@@ -194,8 +196,8 @@ impl Selection {
     fn schema(&self) -> Result<&Schema, Error> {
         Ok(&self.schema)
     }
-    fn children(&self) -> &LogicalPlan {
-        &self.children
+    fn children(&self) -> Option<&[LogicalPlan]> {
+        Some(&self.children)
     }
 }
 
@@ -203,7 +205,7 @@ impl Selection {
 pub struct Aggregate {
     group_exprs: Vec<Box<dyn LogicalExpression>>,
     aggregate_exprs: Vec<Box<dyn LogicalExpression>>,
-    children: Box<LogicalPlan>,
+    children: Vec<LogicalPlan>,
     schema: Schema,
 }
 
@@ -217,7 +219,7 @@ impl Aggregate {
             schema: Self::derive_schema(&group_exprs, &aggregate_exprs, &input),
             group_exprs: group_exprs,
             aggregate_exprs: aggregate_exprs,
-            children: Box::new(input),
+            children: vec![input],
         }
     }
 
@@ -254,7 +256,7 @@ impl Aggregate {
     fn schema(&self) -> Result<&Schema, Error> {
         Ok(&self.schema)
     }
-    fn children(&self) -> &LogicalPlan {
-        &self.children
+    fn children(&self) -> Option<&[LogicalPlan]> {
+        Some(&self.children)
     }
 }

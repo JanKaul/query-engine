@@ -21,6 +21,11 @@ impl PhysicalPlan {
             PhysicalPlan::Scan(scan) => scan.schema(),
         }
     }
+    pub fn children(&self) -> Option<&[PhysicalPlan]> {
+        match self {
+            PhysicalPlan::Scan(scan) => scan.children(),
+        }
+    }
 }
 
 pub struct ScanExec {
@@ -57,10 +62,10 @@ impl ScanExec {
     fn schema(&self) -> &Schema {
         &self.schema
     }
-    fn children(&self) -> Option<&PhysicalPlan> {
-        todo!()
+    fn children(&self) -> Option<&[PhysicalPlan]> {
+        None
     }
-    fn execute<I: Iterator<Item = Result<Chunk<Arc<dyn Array>>, ArrowError>>>(self) -> I {
-        todo!()
+    fn execute(self) -> impl Iterator<Item = Result<Chunk<Arc<dyn Array>>, ArrowError>> {
+        self.data_source.scan(self.projection)
     }
 }

@@ -288,3 +288,39 @@ mathExpression!(AddExpression, add, add_scalar, add, "+".to_string());
 mathExpression!(SubExpression, sub, sub_scalar, sub, "-".to_string());
 mathExpression!(MulExpression, mul, mul_scalar, mul, "*".to_string());
 mathExpression!(DivExpression, div, div_scalar, div, "/".to_string());
+
+macro_rules! aggregateExpression {
+    ($i: ident, $name: ident, $op_name: expr) => {
+        pub struct $i<E: PhysicalExpression> {
+            expr: E,
+        }
+
+        impl<E: PhysicalExpression> PhysicalExpression for $i<E> {
+            fn evaluate(self, input: &RecordBatch) -> Result<ColumnarValue, Error> {
+                let expr = self.expr.evaluate(input)?;
+                match expr {
+                    ColumnarValue::Array(expr) => compute::aggregate::$name(&*expr)
+                        .map(|x| ColumnarValue::Scalar(x))
+                        .map_err(|err| Error::ArrowError(err)),
+                    s => Ok(s),
+                }
+            }
+        }
+
+        impl<E: PhysicalExpression> $i<E> {
+            pub fn new(expr: E) -> Self {
+                $i { expr: expr }
+            }
+        }
+
+        impl<E: PhysicalExpression> fmt::Display for $i<E> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "{} {}", $op_name, self.expr)
+            }
+        }
+    };
+}
+
+aggregateExpression!(MaxExpression, max, "max".to_string());
+aggregateExpression!(MinExpression, min, "min".to_string());
+aggregateExpression!(SumExpression, sum, "sum".to_string());

@@ -10,5 +10,6 @@ arrow2 = { version = "0.10.1", features = [
     "io_parquet",
     "compute_comparison",
     "compute_arithmetics",
+    "compute_aggregate",
 ] }
 thiserror = "1.0.30"

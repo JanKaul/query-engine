@@ -6,10 +6,6 @@ pub mod physical_expressions;
 
 pub trait PhysicalPlan {
     fn schema(&self) -> &Schema;
-
-    fn children(&self) -> Option<&[Box<dyn PhysicalPlan>]>;
-}
-
-pub trait ExecutePhysicalPlan: PhysicalPlan {
     fn execute(self) -> Vec<RecordBatch>;
+    fn children(&self) -> Option<&[Box<dyn PhysicalPlan>]>;
 }

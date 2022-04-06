@@ -1,6 +1,13 @@
-use arrow2::datatypes::{Field, Schema};
+use std::sync::Arc;
 
-use crate::{data_source::DataSource, record_batch::RecordBatch};
+use arrow2::{
+    array::Array,
+    chunk::Chunk,
+    datatypes::{Field, Schema},
+    error::ArrowError,
+};
+
+use crate::data_source::DataSource;
 
 pub mod physical_expressions;
 
@@ -53,7 +60,7 @@ impl ScanExec {
     fn children(&self) -> Option<&PhysicalPlan> {
         todo!()
     }
-    fn execute(self) -> Vec<RecordBatch> {
+    fn execute<I: Iterator<Item = Result<Chunk<Arc<dyn Array>>, ArrowError>>>(self) -> I {
         todo!()
     }
 }

@@ -5,7 +5,6 @@ pub mod error;
 pub mod logical_plan;
 pub mod physical_plan;
 pub mod prelude;
-pub mod record_batch;
 
 #[cfg(test)]
 mod tests;

@@ -1,8 +1,11 @@
 use std::fs::File;
+use std::sync::Arc;
 
 use crate::error::Error;
-use crate::record_batch::RecordBatch;
+use arrow2::array::Array;
+use arrow2::chunk::Chunk;
 use arrow2::datatypes::Schema;
+use arrow2::error::ArrowError;
 use arrow2::io::parquet::read::{infer_schema, read_metadata, FileMetaData};
 
 pub enum DataSource {
@@ -15,7 +18,10 @@ impl DataSource {
             DataSource::Parquet(ds) => ds.schema(),
         }
     }
-    pub fn scan(&self, projection: Vec<String>) -> &[RecordBatch] {
+    pub fn scan<I: Iterator<Item = Result<Chunk<Arc<dyn Array>>, ArrowError>>>(
+        &self,
+        projection: Vec<String>,
+    ) -> I {
         match self {
             DataSource::Parquet(ds) => ds.scan(projection),
         }
@@ -46,7 +52,10 @@ impl ParquetDataSource {
     fn schema(&self) -> Schema {
         infer_schema(&self.metadata).unwrap()
     }
-    fn scan(&self, projection: Vec<String>) -> &[RecordBatch] {
+    pub fn scan<I: Iterator<Item = Result<Chunk<Arc<dyn Array>>, ArrowError>>>(
+        &self,
+        projection: Vec<String>,
+    ) -> I {
         todo!()
     }
 }

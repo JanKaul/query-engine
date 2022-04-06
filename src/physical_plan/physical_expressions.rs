@@ -1,6 +1,9 @@
+use std::borrow::Borrow;
 use std::fmt::{self, Display};
 use std::ops::{Add, Div, Mul, Sub};
+use std::sync::Arc;
 
+use arrow2::chunk::Chunk;
 use arrow2::datatypes::PhysicalType::Primitive;
 use arrow2::datatypes::{DataType, PhysicalType};
 use arrow2::scalar::{BooleanScalar, PrimitiveScalar};
@@ -12,10 +15,10 @@ use arrow2::{
 };
 
 use crate::columnar_value::ColumnarValue;
-use crate::{error::Error, record_batch::RecordBatch};
+use crate::error::Error;
 
 pub trait PhysicalExpression: Display {
-    fn evaluate(self, input: &RecordBatch) -> Result<ColumnarValue, Error>;
+    fn evaluate(self, input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error>;
 }
 
 pub struct ColumnExpression {
@@ -23,20 +26,23 @@ pub struct ColumnExpression {
 }
 
 impl PhysicalExpression for ColumnExpression {
-    fn evaluate(self, input: &RecordBatch) -> Result<ColumnarValue, Error> {
+    fn evaluate(self, input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error> {
         input
-            .field(self.index)
-            .and_then(|x| match x.data_type().to_physical_type() {
-                Primitive(PrimitiveType::Int32) => x
-                    .as_any()
-                    .downcast_ref::<PrimitiveArray<i32>>()
-                    .ok_or(Error::PrimitiveTypeNotSuported(format!(
-                        "{:?}",
-                        PrimitiveType::Int32
-                    )))
-                    .map(|y| ColumnarValue::Array(Box::new(y.clone()) as Box<dyn Array>)),
-                t => Err(Error::PhysicalTypeNotSuported(format!("{:?}", t))),
+            .get(self.index)
+            .and_then(|x| {
+                let x: &dyn Array = x.borrow();
+                match x.data_type().to_physical_type() {
+                    Primitive(PrimitiveType::Int32) => x
+                        .as_any()
+                        .downcast_ref::<PrimitiveArray<i32>>()
+                        .map(|y| ColumnarValue::Array(Box::new(y.clone()) as Box<dyn Array>)),
+                    t => None,
+                }
             })
+            .ok_or(Error::PrimitiveTypeNotSuported(format!(
+                "{:?}",
+                PrimitiveType::Int32
+            )))
     }
 }
 
@@ -59,7 +65,7 @@ impl LiteralStringExpression {
 }
 
 impl PhysicalExpression for LiteralStringExpression {
-    fn evaluate(self, _input: &RecordBatch) -> Result<ColumnarValue, Error> {
+    fn evaluate(self, _input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error> {
         Ok(ColumnarValue::Scalar(Box::new(self.value)))
     }
 }
@@ -83,7 +89,7 @@ impl LiteralIntegerExpression {
 }
 
 impl PhysicalExpression for LiteralIntegerExpression {
-    fn evaluate(self, _input: &RecordBatch) -> Result<ColumnarValue, Error> {
+    fn evaluate(self, _input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error> {
         Ok(ColumnarValue::Scalar(Box::new(self.value)))
     }
 }
@@ -107,7 +113,7 @@ impl LiteralFloatExpression {
 }
 
 impl PhysicalExpression for LiteralFloatExpression {
-    fn evaluate(self, _input: &RecordBatch) -> Result<ColumnarValue, Error> {
+    fn evaluate(self, _input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error> {
         Ok(ColumnarValue::Scalar(Box::new(self.value)))
     }
 }
@@ -126,7 +132,7 @@ macro_rules! booleanBinaryExpression {
         }
 
         impl<E: PhysicalExpression> PhysicalExpression for $i<E> {
-            fn evaluate(self, input: &RecordBatch) -> Result<ColumnarValue, Error> {
+            fn evaluate(self, input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error> {
                 let l = self.left.evaluate(input)?;
                 let r = self.right.evaluate(input)?;
                 match (l, r) {
@@ -188,7 +194,7 @@ macro_rules! mathExpression {
         }
 
         impl<E: PhysicalExpression> PhysicalExpression for $i<E> {
-            fn evaluate(self, input: &RecordBatch) -> Result<ColumnarValue, Error> {
+            fn evaluate(self, input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error> {
                 let left = self.left.evaluate(input)?;
                 let right = self.right.evaluate(input)?;
                 match (left, right) {
@@ -296,7 +302,7 @@ macro_rules! aggregateExpression {
         }
 
         impl<E: PhysicalExpression> PhysicalExpression for $i<E> {
-            fn evaluate(self, input: &RecordBatch) -> Result<ColumnarValue, Error> {
+            fn evaluate(self, input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error> {
                 let expr = self.expr.evaluate(input)?;
                 match expr {
                     ColumnarValue::Array(expr) => compute::aggregate::$name(&*expr)

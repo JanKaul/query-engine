@@ -3,8 +3,8 @@ use std::fmt::{self, Display};
 use std::ops::{Add, Div, Mul, Sub};
 use std::sync::Arc;
 
+use arrow2::array::{BooleanArray, Utf8Array};
 use arrow2::chunk::Chunk;
-use arrow2::datatypes::PhysicalType::Primitive;
 use arrow2::datatypes::{DataType, PhysicalType};
 use arrow2::scalar::{BooleanScalar, PrimitiveScalar};
 use arrow2::{
@@ -32,13 +32,21 @@ impl PhysicalExpression for ColumnExpression {
             .and_then(|x| {
                 let x: &dyn Array = x.borrow();
                 match x.data_type().to_physical_type() {
-                    Primitive(PrimitiveType::Int32) => x
+                    PhysicalType::Primitive(PrimitiveType::Int32) => x
                         .as_any()
                         .downcast_ref::<PrimitiveArray<i32>>()
                         .map(|y| ColumnarValue::Array(Arc::new(y.clone()) as Arc<dyn Array>)),
-                    Primitive(PrimitiveType::Float64) => x
+                    PhysicalType::Primitive(PrimitiveType::Float64) => x
                         .as_any()
                         .downcast_ref::<PrimitiveArray<f64>>()
+                        .map(|y| ColumnarValue::Array(Arc::new(y.clone()) as Arc<dyn Array>)),
+                    PhysicalType::Utf8 => x
+                        .as_any()
+                        .downcast_ref::<Utf8Array<i32>>()
+                        .map(|y| ColumnarValue::Array(Arc::new(y.clone()) as Arc<dyn Array>)),
+                    PhysicalType::Boolean => x
+                        .as_any()
+                        .downcast_ref::<BooleanArray>()
                         .map(|y| ColumnarValue::Array(Arc::new(y.clone()) as Arc<dyn Array>)),
                     _ => None,
                 }

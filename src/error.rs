@@ -14,6 +14,8 @@ pub enum Error {
     PrimitiveTypeNotSuported(String),
     #[error("Error wile downcasting Array.")]
     DowncastError,
+    #[error("Couldn't convert Scalar value `{0}` to array.")]
+    ScalarToArrayError(String),
     #[error("IoError: `{0}`.")]
     IoError(std::io::Error),
     #[error("IoError: `{0}`.")]

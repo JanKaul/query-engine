@@ -18,7 +18,7 @@ use crate::columnar_value::ColumnarValue;
 use crate::error::Error;
 
 pub trait PhysicalExpression: Display {
-    fn evaluate(self, input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error>;
+    fn evaluate(&self, input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error>;
 }
 
 pub struct ColumnExpression {
@@ -26,7 +26,7 @@ pub struct ColumnExpression {
 }
 
 impl PhysicalExpression for ColumnExpression {
-    fn evaluate(self, input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error> {
+    fn evaluate(&self, input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error> {
         input
             .get(self.index)
             .and_then(|x| {
@@ -35,11 +35,11 @@ impl PhysicalExpression for ColumnExpression {
                     Primitive(PrimitiveType::Int32) => x
                         .as_any()
                         .downcast_ref::<PrimitiveArray<i32>>()
-                        .map(|y| ColumnarValue::Array(Box::new(y.clone()) as Box<dyn Array>)),
+                        .map(|y| ColumnarValue::Array(Arc::new(y.clone()) as Arc<dyn Array>)),
                     Primitive(PrimitiveType::Float64) => x
                         .as_any()
                         .downcast_ref::<PrimitiveArray<f64>>()
-                        .map(|y| ColumnarValue::Array(Box::new(y.clone()) as Box<dyn Array>)),
+                        .map(|y| ColumnarValue::Array(Arc::new(y.clone()) as Arc<dyn Array>)),
                     _ => None,
                 }
             })
@@ -69,8 +69,8 @@ impl LiteralStringExpression {
 }
 
 impl PhysicalExpression for LiteralStringExpression {
-    fn evaluate(self, _input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error> {
-        Ok(ColumnarValue::Scalar(Box::new(self.value)))
+    fn evaluate(&self, _input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error> {
+        Ok(ColumnarValue::Scalar(Box::new(self.value.clone())))
     }
 }
 
@@ -93,8 +93,8 @@ impl LiteralIntegerExpression {
 }
 
 impl PhysicalExpression for LiteralIntegerExpression {
-    fn evaluate(self, _input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error> {
-        Ok(ColumnarValue::Scalar(Box::new(self.value)))
+    fn evaluate(&self, _input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error> {
+        Ok(ColumnarValue::Scalar(Box::new(self.value.clone())))
     }
 }
 
@@ -117,8 +117,8 @@ impl LiteralFloatExpression {
 }
 
 impl PhysicalExpression for LiteralFloatExpression {
-    fn evaluate(self, _input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error> {
-        Ok(ColumnarValue::Scalar(Box::new(self.value)))
+    fn evaluate(&self, _input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error> {
+        Ok(ColumnarValue::Scalar(Box::new(self.value.clone())))
     }
 }
 
@@ -136,13 +136,13 @@ macro_rules! booleanBinaryExpression {
         }
 
         impl<E: PhysicalExpression> PhysicalExpression for $i<E> {
-            fn evaluate(self, input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error> {
+            fn evaluate(&self, input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error> {
                 let l = self.left.evaluate(input)?;
                 let r = self.right.evaluate(input)?;
                 match (l, r) {
                     (ColumnarValue::Array(left), ColumnarValue::Array(right)) => {
                         if left.len() == right.len() {
-                            Ok(ColumnarValue::Array(Box::new(compute::comparison::$name1(
+                            Ok(ColumnarValue::Array(Arc::new(compute::comparison::$name1(
                                 &*left, &*right,
                             ))))
                         } else {
@@ -153,12 +153,12 @@ macro_rules! booleanBinaryExpression {
                         }
                     }
                     (ColumnarValue::Array(left), ColumnarValue::Scalar(right)) => {
-                        Ok(ColumnarValue::Array(Box::new(compute::comparison::$name2(
+                        Ok(ColumnarValue::Array(Arc::new(compute::comparison::$name2(
                             &*left, &*right,
                         ))))
                     }
                     (ColumnarValue::Scalar(left), ColumnarValue::Array(right)) => {
-                        Ok(ColumnarValue::Array(Box::new(compute::comparison::$name2(
+                        Ok(ColumnarValue::Array(Arc::new(compute::comparison::$name2(
                             &*right, &*left,
                         ))))
                     }
@@ -198,14 +198,14 @@ macro_rules! mathExpression {
         }
 
         impl<E: PhysicalExpression> PhysicalExpression for $i<E> {
-            fn evaluate(self, input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error> {
+            fn evaluate(&self, input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error> {
                 let left = self.left.evaluate(input)?;
                 let right = self.right.evaluate(input)?;
                 match (left, right) {
                     (ColumnarValue::Array(left), ColumnarValue::Array(right)) => {
                         if left.len() == right.len() {
-                            Ok(ColumnarValue::Array(compute::arithmetics::$name1(
-                                &*left, &*right,
+                            Ok(ColumnarValue::Array(Arc::from(
+                                compute::arithmetics::$name1(&*left, &*right),
                             )))
                         } else {
                             Err(Error::DifferentSizes(
@@ -214,12 +214,16 @@ macro_rules! mathExpression {
                             ))
                         }
                     }
-                    (ColumnarValue::Array(left), ColumnarValue::Scalar(right)) => Ok(
-                        ColumnarValue::Array(compute::arithmetics::$name2(&*left, &*right)),
-                    ),
-                    (ColumnarValue::Scalar(left), ColumnarValue::Array(right)) => Ok(
-                        ColumnarValue::Array(compute::arithmetics::$name2(&*right, &*left)),
-                    ),
+                    (ColumnarValue::Array(left), ColumnarValue::Scalar(right)) => {
+                        Ok(ColumnarValue::Array(Arc::from(
+                            compute::arithmetics::$name2(&*left, &*right),
+                        )))
+                    }
+                    (ColumnarValue::Scalar(left), ColumnarValue::Array(right)) => {
+                        Ok(ColumnarValue::Array(Arc::from(
+                            compute::arithmetics::$name2(&*right, &*left),
+                        )))
+                    }
                     (ColumnarValue::Scalar(left), ColumnarValue::Scalar(right)) => {
                         match (
                             left.data_type().to_physical_type(),
@@ -306,7 +310,7 @@ macro_rules! aggregateExpression {
         }
 
         impl<E: PhysicalExpression> PhysicalExpression for $i<E> {
-            fn evaluate(self, input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error> {
+            fn evaluate(&self, input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error> {
                 let expr = self.expr.evaluate(input)?;
                 match expr {
                     ColumnarValue::Array(expr) => compute::aggregate::$name(&*expr)

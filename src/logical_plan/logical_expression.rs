@@ -45,6 +45,32 @@ impl fmt::Display for Column {
 
 // LiteralString expression
 
+pub struct LiteralBool {
+    value: bool,
+}
+
+impl LiteralBool {
+    pub fn new(value: bool) -> Self {
+        LiteralBool { value: value }
+    }
+}
+
+impl LogicalExpression for LiteralBool {
+    fn to_field(&self, _input: &LogicalPlan) -> Result<Field, Error> {
+        Ok(Field {
+            name: self.value.to_string(),
+            data_type: datatypes::DataType::Boolean,
+            is_nullable: false,
+            metadata: Metadata::default(),
+        })
+    }
+}
+
+impl fmt::Display for LiteralBool {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "'{}'", self.value)
+    }
+}
 pub struct LiteralString {
     value: String,
 }

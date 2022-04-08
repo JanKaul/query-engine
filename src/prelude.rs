@@ -1,5 +1,5 @@
 use crate::logical_plan::logical_expression::{
-    Column, LiteralFloat, LiteralInteger, LiteralString,
+    Column, LiteralBool, LiteralFloat, LiteralInteger, LiteralString,
 };
 
 pub use crate::logical_plan::logical_expression::LogicalExpressionMethods;
@@ -18,4 +18,8 @@ pub fn lit_int(value: i32) -> LiteralInteger {
 
 pub fn lit_float(value: f64) -> LiteralFloat {
     LiteralFloat::new(value)
+}
+
+pub fn lit_bool(value: bool) -> LiteralBool {
+    LiteralBool::new(value)
 }

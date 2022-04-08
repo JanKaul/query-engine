@@ -64,6 +64,30 @@ impl fmt::Display for ColumnExpression {
     }
 }
 
+pub struct LiteralBoolExpression {
+    value: BooleanScalar,
+}
+
+impl LiteralBoolExpression {
+    pub fn new(value: bool) -> Self {
+        LiteralBoolExpression {
+            value: BooleanScalar::new(Some(value)),
+        }
+    }
+}
+
+impl PhysicalExpression for LiteralBoolExpression {
+    fn evaluate(&self, _input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error> {
+        Ok(ColumnarValue::Scalar(Box::new(self.value.clone())))
+    }
+}
+
+impl fmt::Display for LiteralBoolExpression {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "#{:?}", self.value)
+    }
+}
+
 pub struct LiteralStringExpression {
     value: Utf8Scalar<i32>,
 }

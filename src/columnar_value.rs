@@ -1,7 +1,7 @@
 use arrow2::{
-    array::{PrimitiveArray, Utf8Array},
+    array::{BooleanArray, PrimitiveArray, Utf8Array},
     datatypes::PhysicalType::{self},
-    scalar::{PrimitiveScalar, Utf8Scalar},
+    scalar::{BooleanScalar, PrimitiveScalar, Utf8Scalar},
 };
 use std::sync::Arc;
 
@@ -38,6 +38,12 @@ pub fn scalar_to_array(scalar: Box<dyn Scalar>, len: usize) -> Result<Arc<dyn Ar
                     len
                 ])) as Arc<dyn Array>
             })
+            .ok_or(Error::ScalarToArrayError(format!("{:?}", scalar))),
+        PhysicalType::Boolean => scalar
+            .as_any()
+            .downcast_ref::<BooleanScalar>()
+            .and_then(|x| x.value())
+            .map(|val| Arc::new(BooleanArray::from(&vec![Some(val); len])) as Arc<dyn Array>)
             .ok_or(Error::ScalarToArrayError(format!("{:?}", scalar))),
         _ => Err(Error::ScalarToArrayError(format!("{:?}", scalar))),
     }

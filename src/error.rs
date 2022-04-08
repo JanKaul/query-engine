@@ -16,6 +16,8 @@ pub enum Error {
     DowncastError,
     #[error("Couldn't convert Scalar value `{0}` to array.")]
     ScalarToArrayError(String),
+    #[error("Expr doesn't evaluate to a boolean array, which is needed to filter.")]
+    NoBooleanArrayForFilter,
     #[error("IoError: `{0}`.")]
     IoError(std::io::Error),
     #[error("IoError: `{0}`.")]

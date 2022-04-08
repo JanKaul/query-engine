@@ -139,7 +139,7 @@ impl LogicalExpression for LiteralFloat {
     fn to_field(&self, _input: &LogicalPlan) -> Result<Field, Error> {
         Ok(Field {
             name: self.value.to_string(),
-            data_type: datatypes::DataType::Utf8,
+            data_type: datatypes::DataType::Float64,
             is_nullable: false,
             metadata: Metadata::default(),
         })

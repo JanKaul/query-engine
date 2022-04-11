@@ -6,7 +6,7 @@ use std::sync::Arc;
 use arrow2::array::{BooleanArray, Utf8Array};
 use arrow2::chunk::Chunk;
 use arrow2::datatypes::{DataType, PhysicalType};
-use arrow2::scalar::{BooleanScalar, PrimitiveScalar};
+use arrow2::scalar::{BooleanScalar, NullScalar, PrimitiveScalar, Scalar};
 use arrow2::{
     array::{Array, PrimitiveArray},
     compute,
@@ -367,6 +367,109 @@ macro_rules! aggregateExpression {
     };
 }
 
-aggregateExpression!(MaxExpression, max, "max".to_string());
+// aggregateExpression!(MaxExpression, max, "max".to_string());
 aggregateExpression!(MinExpression, min, "min".to_string());
 aggregateExpression!(SumExpression, sum, "sum".to_string());
+
+pub struct MaxAccumulator<E: PhysicalExpression> {
+    value: Box<dyn Scalar>,
+    expr: E,
+}
+trait Accumulator {
+    fn accumulate(&mut self, input: &Chunk<Arc<dyn Array>>) -> Result<(), Error>;
+    fn final_value(self) -> Result<ColumnarValue, Error>;
+}
+
+impl<E: PhysicalExpression> Accumulator for MaxAccumulator<E> {
+    fn accumulate(&mut self, input: &Chunk<Arc<dyn Array>>) -> Result<(), Error> {
+        let expr = self.expr.evaluate(input)?;
+        let new = match expr {
+            ColumnarValue::Array(expr) => {
+                compute::aggregate::max(&*expr).map_err(|err| Error::ArrowError(err))
+            }
+            ColumnarValue::Scalar(scalar) => Ok(scalar),
+        }?;
+        let bool = match (
+            new.data_type().to_physical_type(),
+            self.value.data_type().to_physical_type(),
+        ) {
+            (
+                PhysicalType::Primitive(PrimitiveType::Float64),
+                PhysicalType::Primitive(PrimitiveType::Float64),
+            ) => {
+                let (left, right) = (
+                    new.as_any()
+                        .downcast_ref::<PrimitiveScalar<f64>>()
+                        .ok_or(Error::DowncastError)?,
+                    self.value
+                        .as_any()
+                        .downcast_ref::<PrimitiveScalar<f64>>()
+                        .ok_or(Error::DowncastError)?,
+                );
+                match (left.value(), right.value()) {
+                    (Some(left), Some(right)) => Ok(left.gt(&right)),
+                    _ => Err(Error::DowncastError),
+                }
+            }
+            (
+                PhysicalType::Primitive(PrimitiveType::Int32),
+                PhysicalType::Primitive(PrimitiveType::Int32),
+            ) => {
+                let (left, right) = (
+                    new.as_any()
+                        .downcast_ref::<PrimitiveScalar<i32>>()
+                        .ok_or(Error::DowncastError)?,
+                    self.value
+                        .as_any()
+                        .downcast_ref::<PrimitiveScalar<i32>>()
+                        .ok_or(Error::DowncastError)?,
+                );
+                match (left.value(), right.value()) {
+                    (Some(left), Some(right)) => Ok(left.gt(&right)),
+                    _ => Err(Error::DowncastError),
+                }
+            }
+            _ => Err(Error::PrimitiveTypeNotSuported(format!(
+                "{:?}",
+                new.data_type()
+            ))),
+        }?;
+        if bool {
+            self.value = new;
+        };
+        Ok(())
+    }
+    fn final_value(self) -> Result<ColumnarValue, Error> {
+        Ok(ColumnarValue::Scalar(self.value))
+    }
+}
+
+pub trait PhysicalAggregateExpression {
+    type Item;
+    fn create_accumulator(self) -> Self::Item;
+}
+pub struct MaxExpression<E: PhysicalExpression> {
+    expr: E,
+}
+
+impl<E: PhysicalExpression> PhysicalAggregateExpression for MaxExpression<E> {
+    type Item = MaxAccumulator<E>;
+    fn create_accumulator(self) -> Self::Item {
+        MaxAccumulator {
+            value: Box::new(NullScalar::new()),
+            expr: self.expr,
+        }
+    }
+}
+
+impl<E: PhysicalExpression> MaxExpression<E> {
+    pub fn new(expr: E) -> Self {
+        MaxExpression { expr: expr }
+    }
+}
+
+impl<E: PhysicalExpression> fmt::Display for MaxExpression<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}", "max", self.expr)
+    }
+}

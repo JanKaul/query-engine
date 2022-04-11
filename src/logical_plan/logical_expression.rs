@@ -254,7 +254,7 @@ mathExpression!(Mod, "mod".to_string(), "%".to_string());
 
 // AggregateExpressions
 
-pub trait AggregateExpression: LogicalExpression {}
+pub trait LogicalAggregateExpression: LogicalExpression {}
 
 macro_rules! aggregateExpression {
     ($i: ident, $name: expr) => {
@@ -283,7 +283,7 @@ macro_rules! aggregateExpression {
             }
         }
 
-        impl<T: LogicalExpression> AggregateExpression for $i<T> {}
+        impl<T: LogicalExpression> LogicalAggregateExpression for $i<T> {}
 
         impl<T: LogicalExpression> fmt::Display for $i<T> {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

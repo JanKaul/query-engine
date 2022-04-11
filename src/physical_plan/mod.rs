@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use arrow2::{
@@ -241,5 +242,71 @@ impl SelectionExec {
             inputIter: input.execute(),
             expr: self.expr,
         })
+    }
+}
+
+pub struct AggregateExec {
+    input: Vec<PhysicalPlan>,
+    schema: Schema,
+    group_exprs: Vec<Box<dyn PhysicalExpression>>,
+    agg_exprs: Vec<Box<dyn PhysicalExpression>>,
+}
+
+impl AggregateExec {
+    pub fn new(
+        input: Vec<PhysicalPlan>,
+        group_exprs: Vec<Box<dyn PhysicalExpression>>,
+        agg_exprs: Vec<Box<dyn PhysicalExpression>>,
+        schema: Schema,
+    ) -> Self {
+        AggregateExec {
+            schema: schema,
+            input: input,
+            group_exprs: group_exprs,
+            agg_exprs: agg_exprs,
+        }
+    }
+}
+
+pub struct AggregateIterator {
+    output: Option<Batch>,
+}
+
+impl Iterator for AggregateIterator {
+    type Item = Batch;
+    fn next(&mut self) -> Option<Self::Item> {
+        None
+    }
+}
+
+impl AggregateExec {
+    fn schema(&self) -> &Schema {
+        &self.schema
+    }
+    fn children(&self) -> Option<&[PhysicalPlan]> {
+        Some(&self.input)
+    }
+    fn execute(self) -> Box<dyn Iterator<Item = Batch>> {
+        let mut vec = self.input;
+        let input = vec.pop().unwrap();
+        let hashmap = HashMap::new();
+        input.execute().for_each(|res| match res {
+            Ok(batch) => {
+                let group_keys = self
+                    .group_exprs
+                    .into_iter()
+                    .map(|expr| expr.evaluate(&batch))
+                    .collect::<Result<Vec<ColumnarValue>, Error>>()
+                    .unwrap_or(Vec::new());
+                let agg_input = self
+                    .agg_exprs
+                    .into_iter()
+                    .map(|expr| expr.evaluate(&batch))
+                    .collect::<Result<Vec<ColumnarValue>, Error>>()
+                    .unwrap_or(Vec::new());
+            }
+            Err(_) => (),
+        });
+        Box::new(AggregateIterator { output: None })
     }
 }

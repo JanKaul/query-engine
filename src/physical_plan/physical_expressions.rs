@@ -376,7 +376,7 @@ pub trait Accumulator {
     fn final_value(self) -> Result<ColumnarValue, Error>;
 }
 
-pub trait PhysicalAggregateExpression {
+pub trait PhysicalAggregateExpression: PhysicalExpression {
     type Item;
     fn create_accumulator(self) -> Self::Item;
 }
@@ -453,6 +453,12 @@ macro_rules! aggregateExpression {
         }
         pub struct $expr<E: PhysicalExpression> {
             expr: E,
+        }
+
+        impl<E: PhysicalExpression> PhysicalExpression for $expr<E> {
+            fn evaluate(&self, input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error> {
+                self.expr.evaluate(input)
+            }
         }
         
         impl<E: PhysicalExpression> PhysicalAggregateExpression for $expr<E> {

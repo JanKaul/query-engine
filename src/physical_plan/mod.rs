@@ -289,18 +289,18 @@ impl AggregateExec {
     fn execute(self) -> Box<dyn Iterator<Item = Batch>> {
         let mut vec = self.input;
         let input = vec.pop().unwrap();
-        let hashmap = HashMap::new();
+        // let hashmap = HashMap::new();
         input.execute().for_each(|res| match res {
             Ok(batch) => {
                 let group_keys = self
                     .group_exprs
-                    .into_iter()
+                    .iter()
                     .map(|expr| expr.evaluate(&batch))
                     .collect::<Result<Vec<ColumnarValue>, Error>>()
                     .unwrap_or(Vec::new());
                 let agg_input = self
                     .agg_exprs
-                    .into_iter()
+                    .iter()
                     .map(|expr| expr.evaluate(&batch))
                     .collect::<Result<Vec<ColumnarValue>, Error>>()
                     .unwrap_or(Vec::new());

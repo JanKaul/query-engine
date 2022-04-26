@@ -1,12 +1,19 @@
-use std::collections::HashMap;
+use std::collections::HashSet;
+use std::{collections::HashMap, borrow::Borrow};
 use std::sync::Arc;
 
+use arrow2::array::{PrimitiveArray, MutablePrimitiveArray, MutableArray, MutableUtf8Array, Utf8Array, MutableBooleanArray};
+use arrow2::bitmap::Bitmap;
+use arrow2::buffer::Buffer;
+use arrow2::compute::arithmetics::ArrayAdd;
+use arrow2::datatypes::{ DataType, PhysicalType, PrimitiveType};
+use arrow2::scalar::PrimitiveScalar;
 use arrow2::{
     array::{Array, BooleanArray},
     chunk::Chunk,
     compute,
     datatypes::{Field, Schema},
-    error::ArrowError,
+    error::ArrowError
 };
 
 use crate::{
@@ -15,7 +22,7 @@ use crate::{
     error::Error,
 };
 
-use self::physical_expressions::PhysicalExpression;
+use self::physical_expressions::{PhysicalExpression, PhysicalAggregateExpression, Accumulator};
 
 pub mod physical_expressions;
 
@@ -25,6 +32,7 @@ pub enum PhysicalPlan {
     Scan(ScanExec),
     Projection(ProjectionExec),
     Selection(SelectionExec),
+    Aggregate(AggregateExec)
 }
 
 impl PhysicalPlan {
@@ -33,6 +41,7 @@ impl PhysicalPlan {
             PhysicalPlan::Scan(scan) => scan.schema(),
             PhysicalPlan::Projection(proj) => proj.schema(),
             PhysicalPlan::Selection(sel) => sel.schema(),
+            PhysicalPlan::Aggregate(agg) => agg.schema(),
         }
     }
     pub fn children(&self) -> Option<&[PhysicalPlan]> {
@@ -40,6 +49,7 @@ impl PhysicalPlan {
             PhysicalPlan::Scan(scan) => scan.children(),
             PhysicalPlan::Projection(proj) => proj.children(),
             PhysicalPlan::Selection(sel) => sel.children(),
+            PhysicalPlan::Aggregate(agg) => agg.children(),
         }
     }
     pub fn execute(self) -> Box<dyn Iterator<Item = Batch>> {
@@ -47,6 +57,7 @@ impl PhysicalPlan {
             PhysicalPlan::Scan(scan) => scan.execute(),
             PhysicalPlan::Projection(proj) => proj.execute(),
             PhysicalPlan::Selection(sel) => sel.execute(),
+            PhysicalPlan::Aggregate(agg) => agg.execute(),
         }
     }
 }
@@ -82,13 +93,13 @@ impl ScanExec {
 }
 
 pub struct ScanIterator<I: Iterator<Item = Result<Chunk<Arc<dyn Array>>, ArrowError>>> {
-    inputIter: I,
+    input_iter: I,
 }
 
 impl<I: Iterator<Item = Result<Chunk<Arc<dyn Array>>, ArrowError>>> Iterator for ScanIterator<I> {
     type Item = Batch;
     fn next(&mut self) -> Option<Self::Item> {
-        match self.inputIter.next() {
+        match self.input_iter.next() {
             Some(chunk) => Some(chunk.map_err(|err| Error::ArrowError(err))),
             None => None,
         }
@@ -104,7 +115,7 @@ impl ScanExec {
     }
     fn execute(self) -> Box<dyn Iterator<Item = Batch>> {
         Box::new(ScanIterator {
-            inputIter: self.data_source.scan(self.projection),
+            input_iter: self.data_source.scan(self.projection),
         })
     }
 }
@@ -130,14 +141,14 @@ impl ProjectionExec {
 }
 
 pub struct ProjectionIterator<I: Iterator<Item = Batch>> {
-    inputIter: I,
+    input_iter: I,
     exprs: Vec<Box<dyn PhysicalExpression>>,
 }
 
 impl<I: Iterator<Item = Batch>> Iterator for ProjectionIterator<I> {
     type Item = Batch;
     fn next(&mut self) -> Option<Self::Item> {
-        match self.inputIter.next() {
+        match self.input_iter.next() {
             Some(res) => Some(res.and_then(|chunk| {
                 self.exprs
                     .iter()
@@ -168,7 +179,7 @@ impl ProjectionExec {
         let mut vec = self.input;
         let input = vec.pop().unwrap();
         Box::new(ProjectionIterator {
-            inputIter: input.execute(),
+            input_iter: input.execute(),
             exprs: self.exprs,
         })
     }
@@ -195,14 +206,14 @@ impl SelectionExec {
 }
 
 pub struct SelectionIterator<I: Iterator<Item = Batch>> {
-    inputIter: I,
+    input_iter: I,
     expr: Box<dyn PhysicalExpression>,
 }
 
 impl<I: Iterator<Item = Batch>> Iterator for SelectionIterator<I> {
     type Item = Batch;
     fn next(&mut self) -> Option<Self::Item> {
-        match self.inputIter.next() {
+        match self.input_iter.next() {
             Some(res) => Some(res.and_then(|chunk| {
                 let bitvector = self.expr.evaluate(&chunk).and_then(|col| match col {
                     ColumnarValue::Array(array) => Ok(array),
@@ -239,7 +250,7 @@ impl SelectionExec {
         let mut vec = self.input;
         let input = vec.pop().unwrap();
         Box::new(SelectionIterator {
-            inputIter: input.execute(),
+            input_iter: input.execute(),
             expr: self.expr,
         })
     }
@@ -249,14 +260,14 @@ pub struct AggregateExec {
     input: Vec<PhysicalPlan>,
     schema: Schema,
     group_exprs: Vec<Box<dyn PhysicalExpression>>,
-    agg_exprs: Vec<Box<dyn PhysicalExpression>>,
+    agg_exprs: Vec<Box<dyn PhysicalAggregateExpression<Item = Box<dyn Accumulator>>>>,
 }
 
 impl AggregateExec {
     pub fn new(
         input: Vec<PhysicalPlan>,
         group_exprs: Vec<Box<dyn PhysicalExpression>>,
-        agg_exprs: Vec<Box<dyn PhysicalExpression>>,
+        agg_exprs: Vec<Box<dyn PhysicalAggregateExpression<Item = Box<dyn Accumulator>>>>,
         schema: Schema,
     ) -> Self {
         AggregateExec {
@@ -275,7 +286,7 @@ pub struct AggregateIterator {
 impl Iterator for AggregateIterator {
     type Item = Batch;
     fn next(&mut self) -> Option<Self::Item> {
-        None
+        self.output.take()
     }
 }
 
@@ -289,24 +300,128 @@ impl AggregateExec {
     fn execute(self) -> Box<dyn Iterator<Item = Batch>> {
         let mut vec = self.input;
         let input = vec.pop().unwrap();
-        // let hashmap = HashMap::new();
+        let mut hashmap = HashMap::new();
         input.execute().for_each(|res| match res {
             Ok(batch) => {
-                let group_keys = self
+                let length = batch.len();
+                let mut hashset = HashSet::new();
+                let group_keys = Chunk::new( self
                     .group_exprs
                     .iter()
-                    .map(|expr| expr.evaluate(&batch))
-                    .collect::<Result<Vec<ColumnarValue>, Error>>()
-                    .unwrap_or(Vec::new());
+                    .map(|expr| expr.evaluate(&batch).map(|x| x.to_array(length)))
+                    .collect::<Result<Vec<Arc<dyn Array>>, Error>>()
+                    .unwrap_or(Vec::new()));
+                let group_hashes = group_keys
+                    .iter()
+                    .fold(compute::hash::hash_primitive::<u64>(&PrimitiveArray::new(DataType::UInt64, Buffer::new_zeroed(length), None)), |acc: PrimitiveArray<u64>, x| {
+                        let new = compute::hash::hash(x.borrow()).unwrap();
+                        acc.add(&new)
+                    });
                 let agg_input = self
                     .agg_exprs
                     .iter()
                     .map(|expr| expr.evaluate(&batch))
                     .collect::<Result<Vec<ColumnarValue>, Error>>()
                     .unwrap_or(Vec::new());
+                group_hashes.iter().enumerate().for_each(|(i,key)|{
+                    match key {
+                        Some(key) => if !hashset.contains(key) {
+                            hashset.insert(key);
+                            let validity = Bitmap::from_trusted_len_iter(compute::comparison::eq_scalar(&group_hashes, &PrimitiveScalar::new(DataType::UInt64,Some(key.clone()))).values_iter());
+                            if !hashmap.contains_key(key) {
+                                let accumulators = self.agg_exprs.iter().enumerate().map(|(i, x)| {
+                                    x.create_accumulator(i)
+                                }).collect::<Vec<_>>();
+                                let group_keys = group_keys.iter().map(|x| x.slice(i,1)).map(|y|Arc::from(y)).collect::<Vec<_>>();
+                                hashmap.insert(*key, (accumulators, group_keys));
+                            }
+                            hashmap.get_mut(key).map(|(accs, _)|{
+                                accs.iter_mut().for_each(|acc|{
+                                    acc.accumulate(&agg_input, Some(&validity)).unwrap();
+                                })
+                            });
+                            ()
+                        },
+                        None => ()
+                    }
+                })
             }
             Err(_) => (),
         });
-        Box::new(AggregateIterator { output: None })
+        let rows = hashmap.len();
+        let mut iter = hashmap.into_values();
+        let (accs, mut groups) = iter.next().unwrap();
+        accs.into_iter().for_each(|x| groups.push(x.final_value().unwrap().to_array(1)));
+        let mut columns = groups.into_iter().map(|col|{
+            match col.data_type().to_physical_type() {
+                PhysicalType::Primitive(PrimitiveType::Int32) => {
+                    let mut mutable_array = MutablePrimitiveArray::with_capacity_from(rows, DataType::Int32);
+                    mutable_array.extend_from_slice(col
+                        .as_any()
+                        .downcast_ref::<PrimitiveArray<i32>>().unwrap().values());
+                    Ok(Box::new(mutable_array) as Box<dyn MutableArray>)
+                },
+                PhysicalType::Primitive(PrimitiveType::Float64) => {
+                    let mut mutable_array = MutablePrimitiveArray::with_capacity_from(rows, DataType::Float64);
+                    mutable_array.extend_from_slice(col
+                        .as_any()
+                        .downcast_ref::<PrimitiveArray<f64>>().unwrap().values());
+                    Ok(Box::new(mutable_array) as Box<dyn MutableArray>)
+                },
+                PhysicalType::Utf8 => {
+                    let mut mutable_array = MutableUtf8Array::<i32>::with_capacity(rows);
+                    mutable_array.extend_trusted_len(col
+                        .as_any()
+                        .downcast_ref::<Utf8Array<i32>>().unwrap().iter());
+                    Ok(Box::new(mutable_array) as Box<dyn MutableArray>)
+                },
+                PhysicalType::Boolean => {
+                    let mut mutable_array = MutableBooleanArray::with_capacity(rows);
+                    mutable_array.extend_trusted_len(col
+                        .as_any()
+                        .downcast_ref::<BooleanArray>().unwrap().iter());
+                    Ok(Box::new(mutable_array) as Box<dyn MutableArray>)
+                },
+                t => Err(Error::PhysicalTypeNotSuported(format!("{:?}", t)))
+            }
+        }).collect::<Result<Vec<_>,_>>().unwrap();
+        iter.for_each(|(accs, mut groups)| {
+            accs.into_iter().for_each(|x| groups.push(x.final_value().unwrap().to_array(1)));
+            groups.into_iter().zip(columns.iter_mut()).for_each(|(new,col)| {
+                match col.data_type().to_physical_type() {
+                    PhysicalType::Primitive(PrimitiveType::Int32) => {
+                        col
+                            .as_mut_any()
+                            .downcast_mut::<MutablePrimitiveArray<i32>>().unwrap().extend_from_slice(new
+                            .as_any()
+                            .downcast_ref::<PrimitiveArray<i32>>().unwrap().values());
+                    },
+                    PhysicalType::Primitive(PrimitiveType::Float64) => {
+                        col
+                            .as_mut_any()
+                            .downcast_mut::<MutablePrimitiveArray<f64>>().unwrap().extend_from_slice(new
+                            .as_any()
+                            .downcast_ref::<PrimitiveArray<f64>>().unwrap().values());
+                    },
+                    PhysicalType::Utf8 => {
+                        col
+                            .as_mut_any()
+                            .downcast_mut::<MutableUtf8Array<i32>>().unwrap().extend_trusted_len(new
+                            .as_any()
+                            .downcast_ref::<Utf8Array<i32>>().unwrap().iter());
+                    },
+                    PhysicalType::Boolean => {
+                        col
+                            .as_mut_any()
+                            .downcast_mut::<MutableBooleanArray>().unwrap().extend_trusted_len(new
+                            .as_any()
+                            .downcast_ref::<BooleanArray>().unwrap().iter());
+                    },
+                    _ => ()
+                }
+            });
+        });
+        let columns = Chunk::new(columns.into_iter().map(|mut col| col.as_arc()).collect::<Vec<Arc<_>>>());
+        Box::new(AggregateIterator { output: Some(Ok(columns)) })
     }
 }

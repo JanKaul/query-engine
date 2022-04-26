@@ -4,6 +4,7 @@ use std::ops::{Add, Div, Mul, Sub};
 use std::sync::Arc;
 
 use arrow2::array::{BooleanArray, Utf8Array};
+use arrow2::bitmap::Bitmap;
 use arrow2::chunk::Chunk;
 use arrow2::datatypes::{DataType, PhysicalType};
 use arrow2::scalar::{BooleanScalar, NullScalar, PrimitiveScalar, Scalar};
@@ -13,6 +14,7 @@ use arrow2::{
     datatypes::PrimitiveType,
     scalar::Utf8Scalar,
 };
+use std::ops::BitAnd;
 
 use crate::columnar_value::ColumnarValue;
 use crate::error::Error;
@@ -21,6 +23,7 @@ pub trait PhysicalExpression: Display {
     fn evaluate(&self, input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error>;
 }
 
+#[derive(Clone)]
 pub struct ColumnExpression {
     index: usize,
 }
@@ -64,6 +67,7 @@ impl fmt::Display for ColumnExpression {
     }
 }
 
+#[derive(Clone)]
 pub struct LiteralBoolExpression {
     value: BooleanScalar,
 }
@@ -88,6 +92,7 @@ impl fmt::Display for LiteralBoolExpression {
     }
 }
 
+#[derive(Clone)]
 pub struct LiteralStringExpression {
     value: Utf8Scalar<i32>,
 }
@@ -112,6 +117,7 @@ impl fmt::Display for LiteralStringExpression {
     }
 }
 
+#[derive(Clone)]
 pub struct LiteralIntegerExpression {
     value: PrimitiveScalar<i32>,
 }
@@ -136,6 +142,7 @@ impl fmt::Display for LiteralIntegerExpression {
     }
 }
 
+#[derive(Clone)]
 pub struct LiteralFloatExpression {
     value: PrimitiveScalar<f64>,
 }
@@ -224,6 +231,7 @@ booleanBinaryExpression!(NeqExpression, neq, neq_scalar, ne, "==".to_string());
 
 macro_rules! mathExpression {
     ($i: ident, $name1: ident, $name2: ident, $op: ident, $op_name: expr) => {
+        #[derive(Clone)]
         pub struct $i<E: PhysicalExpression> {
             left: E,
             right: E,
@@ -336,30 +344,40 @@ mathExpression!(MulExpression, mul, mul_scalar, mul, "*".to_string());
 mathExpression!(DivExpression, div, div_scalar, div, "/".to_string());
 
 pub trait Accumulator {
-    fn accumulate(&mut self, input: &Chunk<Arc<dyn Array>>) -> Result<(), Error>;
-    fn final_value(self) -> Result<ColumnarValue, Error>;
+    fn accumulate(&mut self, input: &Vec<ColumnarValue>, validity: Option<&Bitmap>) -> Result<(), Error>;
+    fn final_value(self: Box<Self>) -> Result<ColumnarValue, Error>;
 }
 
 pub trait PhysicalAggregateExpression: PhysicalExpression {
     type Item;
-    fn create_accumulator(self) -> Self::Item;
+    fn create_accumulator(&self, index: usize) -> Self::Item;
 }
 
 macro_rules! aggregateExpression {
     ($acc: ident,$expr: ident, $name1: ident, $name2: ident, $op_name: expr) => {
-        pub struct $acc<E: PhysicalExpression> {
+        pub struct $acc {
             value: Box<dyn Scalar>,
-            expr: E,
+            index: usize,
         }
         
-        impl<E: PhysicalExpression> Accumulator for $acc<E> {
-            fn accumulate(&mut self, input: &Chunk<Arc<dyn Array>>) -> Result<(), Error> {
-                let expr = self.expr.evaluate(input)?;
+        impl Accumulator for $acc {
+            fn accumulate(&mut self, input: &Vec<ColumnarValue>, validity: Option<&Bitmap>) -> Result<(), Error> {
+                let expr = &input[self.index];
                 let new = match expr {
                     ColumnarValue::Array(expr) => {
-                        compute::aggregate::$name1(&*expr).map_err(|err| Error::ArrowError(err))
+                        let val = match (expr.validity(),validity) {
+                            (Some(val1), Some(val2)) => Some(val1.bitand(val2)),
+                            (Some(val), None) => Some(val.clone()),
+                            (None, Some(val)) => Some(val.clone()),
+                            (None, None) => None
+                        };
+                        compute::aggregate::$name1(&*(expr.borrow() as &dyn Array).with_validity(val)).map_err(|err| Error::ArrowError(err))
                     }
-                    ColumnarValue::Scalar(scalar) => Ok(scalar),
+                    ColumnarValue::Scalar(scalar) => match scalar.data_type().to_physical_type() {
+                        PhysicalType::Primitive(PrimitiveType::Float64) => Ok(Box::new(scalar.as_any().downcast_ref::<PrimitiveScalar<f64>>().ok_or(Error::DowncastError)?.clone()) as Box<dyn Scalar>),
+                        PhysicalType::Primitive(PrimitiveType::Int32) => Ok(Box::new(scalar.as_any().downcast_ref::<PrimitiveScalar<i32>>().ok_or(Error::DowncastError)?.clone()) as Box<dyn Scalar>),
+                        x => Err(Error::PhysicalTypeNotSuported(format!("{:?}",x)))
+                    },
                 }?;
                 let bool = match (
                     new.data_type().to_physical_type(),
@@ -411,7 +429,7 @@ macro_rules! aggregateExpression {
                 };
                 Ok(())
             }
-            fn final_value(self) -> Result<ColumnarValue, Error> {
+            fn final_value(self: Box<Self>) -> Result<ColumnarValue, Error> {
                 Ok(ColumnarValue::Scalar(self.value))
             }
         }
@@ -425,12 +443,12 @@ macro_rules! aggregateExpression {
             }
         }
         
-        impl<E: PhysicalExpression> PhysicalAggregateExpression for $expr<E> {
-            type Item = $acc<E>;
-            fn create_accumulator(self) -> Self::Item {
+        impl<E: PhysicalExpression + Clone> PhysicalAggregateExpression for $expr<E> {
+            type Item = $acc;
+            fn create_accumulator(&self, index: usize) -> Self::Item {
                 $acc {
                     value: Box::new(NullScalar::new()),
-                    expr: self.expr,
+                    index: index,
                 }
             }
         }

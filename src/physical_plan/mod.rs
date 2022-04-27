@@ -1,19 +1,22 @@
 use std::collections::HashSet;
-use std::{collections::HashMap, borrow::Borrow};
 use std::sync::Arc;
+use std::{borrow::Borrow, collections::HashMap};
 
-use arrow2::array::{PrimitiveArray, MutablePrimitiveArray, MutableArray, MutableUtf8Array, Utf8Array, MutableBooleanArray};
+use arrow2::array::{
+    MutableArray, MutableBooleanArray, MutablePrimitiveArray, MutableUtf8Array, PrimitiveArray,
+    Utf8Array,
+};
 use arrow2::bitmap::Bitmap;
 use arrow2::buffer::Buffer;
 use arrow2::compute::arithmetics::ArrayAdd;
-use arrow2::datatypes::{ DataType, PhysicalType, PrimitiveType};
+use arrow2::datatypes::{DataType, PhysicalType, PrimitiveType};
 use arrow2::scalar::PrimitiveScalar;
 use arrow2::{
     array::{Array, BooleanArray},
     chunk::Chunk,
     compute,
     datatypes::{Field, Schema},
-    error::ArrowError
+    error::ArrowError,
 };
 
 use crate::{
@@ -22,7 +25,7 @@ use crate::{
     error::Error,
 };
 
-use self::physical_expressions::{PhysicalExpression, PhysicalAggregateExpression, Accumulator};
+use self::physical_expressions::{Accumulator, PhysicalAggregateExpression, PhysicalExpression};
 
 pub mod physical_expressions;
 
@@ -32,7 +35,7 @@ pub enum PhysicalPlan {
     Scan(ScanExec),
     Projection(ProjectionExec),
     Selection(SelectionExec),
-    Aggregate(AggregateExec)
+    Aggregate(AggregateExec),
 }
 
 impl PhysicalPlan {
@@ -305,123 +308,181 @@ impl AggregateExec {
             Ok(batch) => {
                 let length = batch.len();
                 let mut hashset = HashSet::new();
-                let group_keys = Chunk::new( self
-                    .group_exprs
-                    .iter()
-                    .map(|expr| expr.evaluate(&batch).map(|x| x.to_array(length)))
-                    .collect::<Result<Vec<Arc<dyn Array>>, Error>>()
-                    .unwrap_or(Vec::new()));
-                let group_hashes = group_keys
-                    .iter()
-                    .fold(compute::hash::hash_primitive::<u64>(&PrimitiveArray::new(DataType::UInt64, Buffer::new_zeroed(length), None)), |acc: PrimitiveArray<u64>, x| {
+                let group_keys = Chunk::new(
+                    self.group_exprs
+                        .iter()
+                        .map(|expr| expr.evaluate(&batch).map(|x| x.to_array(length)))
+                        .collect::<Result<Vec<Arc<dyn Array>>, Error>>()
+                        .unwrap_or(Vec::new()),
+                );
+                let group_hashes = group_keys.iter().fold(
+                    compute::hash::hash_primitive::<u64>(&PrimitiveArray::new(
+                        DataType::UInt64,
+                        Buffer::new_zeroed(length),
+                        None,
+                    )),
+                    |acc: PrimitiveArray<u64>, x| {
                         let new = compute::hash::hash(x.borrow()).unwrap();
                         acc.add(&new)
-                    });
+                    },
+                );
                 let agg_input = self
                     .agg_exprs
                     .iter()
                     .map(|expr| expr.evaluate(&batch))
                     .collect::<Result<Vec<ColumnarValue>, Error>>()
                     .unwrap_or(Vec::new());
-                group_hashes.iter().enumerate().for_each(|(i,key)|{
-                    match key {
-                        Some(key) => if !hashset.contains(key) {
-                            hashset.insert(key);
-                            let validity = Bitmap::from_trusted_len_iter(compute::comparison::eq_scalar(&group_hashes, &PrimitiveScalar::new(DataType::UInt64,Some(key.clone()))).values_iter());
-                            if !hashmap.contains_key(key) {
-                                let accumulators = self.agg_exprs.iter().enumerate().map(|(i, x)| {
-                                    x.create_accumulator(i)
-                                }).collect::<Vec<_>>();
-                                let group_keys = group_keys.iter().map(|x| x.slice(i,1)).map(|y|Arc::from(y)).collect::<Vec<_>>();
-                                hashmap.insert(*key, (accumulators, group_keys));
+                group_hashes
+                    .iter()
+                    .enumerate()
+                    .for_each(|(i, key)| match key {
+                        Some(key) => {
+                            if !hashset.contains(key) {
+                                hashset.insert(key);
+                                let validity = Bitmap::from_trusted_len_iter(
+                                    compute::comparison::eq_scalar(
+                                        &group_hashes,
+                                        &PrimitiveScalar::new(DataType::UInt64, Some(key.clone())),
+                                    )
+                                    .values_iter(),
+                                );
+                                if !hashmap.contains_key(key) {
+                                    let accumulators = self
+                                        .agg_exprs
+                                        .iter()
+                                        .enumerate()
+                                        .map(|(i, x)| x.create_accumulator(i))
+                                        .collect::<Vec<_>>();
+                                    let group_keys = group_keys
+                                        .iter()
+                                        .map(|x| x.slice(i, 1))
+                                        .map(|y| Arc::from(y))
+                                        .collect::<Vec<_>>();
+                                    hashmap.insert(*key, (accumulators, group_keys));
+                                }
+                                hashmap.get_mut(key).map(|(accs, _)| {
+                                    accs.iter_mut().for_each(|acc| {
+                                        acc.accumulate(&agg_input, Some(&validity)).unwrap();
+                                    })
+                                });
+                                ()
                             }
-                            hashmap.get_mut(key).map(|(accs, _)|{
-                                accs.iter_mut().for_each(|acc|{
-                                    acc.accumulate(&agg_input, Some(&validity)).unwrap();
-                                })
-                            });
-                            ()
-                        },
-                        None => ()
-                    }
-                })
+                        }
+                        None => (),
+                    })
             }
             Err(_) => (),
         });
         let rows = hashmap.len();
         let mut iter = hashmap.into_values();
         let (accs, mut groups) = iter.next().unwrap();
-        accs.into_iter().for_each(|x| groups.push(x.final_value().unwrap().to_array(1)));
-        let mut columns = groups.into_iter().map(|col|{
-            match col.data_type().to_physical_type() {
+        accs.into_iter()
+            .for_each(|x| groups.push(x.final_value().unwrap().to_array(1)));
+        let mut columns = groups
+            .into_iter()
+            .map(|col| match col.data_type().to_physical_type() {
                 PhysicalType::Primitive(PrimitiveType::Int32) => {
-                    let mut mutable_array = MutablePrimitiveArray::with_capacity_from(rows, DataType::Int32);
-                    mutable_array.extend_from_slice(col
-                        .as_any()
-                        .downcast_ref::<PrimitiveArray<i32>>().unwrap().values());
+                    let mut mutable_array =
+                        MutablePrimitiveArray::with_capacity_from(rows, DataType::Int32);
+                    mutable_array.extend_from_slice(
+                        col.as_any()
+                            .downcast_ref::<PrimitiveArray<i32>>()
+                            .unwrap()
+                            .values(),
+                    );
                     Ok(Box::new(mutable_array) as Box<dyn MutableArray>)
-                },
+                }
                 PhysicalType::Primitive(PrimitiveType::Float64) => {
-                    let mut mutable_array = MutablePrimitiveArray::with_capacity_from(rows, DataType::Float64);
-                    mutable_array.extend_from_slice(col
-                        .as_any()
-                        .downcast_ref::<PrimitiveArray<f64>>().unwrap().values());
+                    let mut mutable_array =
+                        MutablePrimitiveArray::with_capacity_from(rows, DataType::Float64);
+                    mutable_array.extend_from_slice(
+                        col.as_any()
+                            .downcast_ref::<PrimitiveArray<f64>>()
+                            .unwrap()
+                            .values(),
+                    );
                     Ok(Box::new(mutable_array) as Box<dyn MutableArray>)
-                },
+                }
                 PhysicalType::Utf8 => {
                     let mut mutable_array = MutableUtf8Array::<i32>::with_capacity(rows);
-                    mutable_array.extend_trusted_len(col
-                        .as_any()
-                        .downcast_ref::<Utf8Array<i32>>().unwrap().iter());
+                    mutable_array.extend_trusted_len(
+                        col.as_any()
+                            .downcast_ref::<Utf8Array<i32>>()
+                            .unwrap()
+                            .iter(),
+                    );
                     Ok(Box::new(mutable_array) as Box<dyn MutableArray>)
-                },
+                }
                 PhysicalType::Boolean => {
                     let mut mutable_array = MutableBooleanArray::with_capacity(rows);
-                    mutable_array.extend_trusted_len(col
-                        .as_any()
-                        .downcast_ref::<BooleanArray>().unwrap().iter());
+                    mutable_array.extend_trusted_len(
+                        col.as_any().downcast_ref::<BooleanArray>().unwrap().iter(),
+                    );
                     Ok(Box::new(mutable_array) as Box<dyn MutableArray>)
-                },
-                t => Err(Error::PhysicalTypeNotSuported(format!("{:?}", t)))
-            }
-        }).collect::<Result<Vec<_>,_>>().unwrap();
-        iter.for_each(|(accs, mut groups)| {
-            accs.into_iter().for_each(|x| groups.push(x.final_value().unwrap().to_array(1)));
-            groups.into_iter().zip(columns.iter_mut()).for_each(|(new,col)| {
-                match col.data_type().to_physical_type() {
-                    PhysicalType::Primitive(PrimitiveType::Int32) => {
-                        col
-                            .as_mut_any()
-                            .downcast_mut::<MutablePrimitiveArray<i32>>().unwrap().extend_from_slice(new
-                            .as_any()
-                            .downcast_ref::<PrimitiveArray<i32>>().unwrap().values());
-                    },
-                    PhysicalType::Primitive(PrimitiveType::Float64) => {
-                        col
-                            .as_mut_any()
-                            .downcast_mut::<MutablePrimitiveArray<f64>>().unwrap().extend_from_slice(new
-                            .as_any()
-                            .downcast_ref::<PrimitiveArray<f64>>().unwrap().values());
-                    },
-                    PhysicalType::Utf8 => {
-                        col
-                            .as_mut_any()
-                            .downcast_mut::<MutableUtf8Array<i32>>().unwrap().extend_trusted_len(new
-                            .as_any()
-                            .downcast_ref::<Utf8Array<i32>>().unwrap().iter());
-                    },
-                    PhysicalType::Boolean => {
-                        col
-                            .as_mut_any()
-                            .downcast_mut::<MutableBooleanArray>().unwrap().extend_trusted_len(new
-                            .as_any()
-                            .downcast_ref::<BooleanArray>().unwrap().iter());
-                    },
-                    _ => ()
                 }
-            });
+                t => Err(Error::PhysicalTypeNotSuported(format!("{:?}", t))),
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        iter.for_each(|(accs, mut groups)| {
+            accs.into_iter()
+                .for_each(|x| groups.push(x.final_value().unwrap().to_array(1)));
+            groups
+                .into_iter()
+                .zip(columns.iter_mut())
+                .for_each(|(new, col)| match col.data_type().to_physical_type() {
+                    PhysicalType::Primitive(PrimitiveType::Int32) => {
+                        col.as_mut_any()
+                            .downcast_mut::<MutablePrimitiveArray<i32>>()
+                            .unwrap()
+                            .extend_from_slice(
+                                new.as_any()
+                                    .downcast_ref::<PrimitiveArray<i32>>()
+                                    .unwrap()
+                                    .values(),
+                            );
+                    }
+                    PhysicalType::Primitive(PrimitiveType::Float64) => {
+                        col.as_mut_any()
+                            .downcast_mut::<MutablePrimitiveArray<f64>>()
+                            .unwrap()
+                            .extend_from_slice(
+                                new.as_any()
+                                    .downcast_ref::<PrimitiveArray<f64>>()
+                                    .unwrap()
+                                    .values(),
+                            );
+                    }
+                    PhysicalType::Utf8 => {
+                        col.as_mut_any()
+                            .downcast_mut::<MutableUtf8Array<i32>>()
+                            .unwrap()
+                            .extend_trusted_len(
+                                new.as_any()
+                                    .downcast_ref::<Utf8Array<i32>>()
+                                    .unwrap()
+                                    .iter(),
+                            );
+                    }
+                    PhysicalType::Boolean => {
+                        col.as_mut_any()
+                            .downcast_mut::<MutableBooleanArray>()
+                            .unwrap()
+                            .extend_trusted_len(
+                                new.as_any().downcast_ref::<BooleanArray>().unwrap().iter(),
+                            );
+                    }
+                    _ => (),
+                });
         });
-        let columns = Chunk::new(columns.into_iter().map(|mut col| col.as_arc()).collect::<Vec<Arc<_>>>());
-        Box::new(AggregateIterator { output: Some(Ok(columns)) })
+        let columns = Chunk::new(
+            columns
+                .into_iter()
+                .map(|mut col| col.as_arc())
+                .collect::<Vec<Arc<_>>>(),
+        );
+        Box::new(AggregateIterator {
+            output: Some(Ok(columns)),
+        })
     }
 }

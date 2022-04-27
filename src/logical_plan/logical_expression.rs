@@ -32,7 +32,7 @@ pub enum LogicalExpression {
     Avg(Box<Avg>),
     Max(Box<Max>),
     Min(Box<Min>),
-    Count(Box<Count>)
+    Count(Box<Count>),
 }
 
 impl LogicalExpression {
@@ -43,12 +43,12 @@ impl LogicalExpression {
             LogicalExpression::LiteralString(string) => string.to_field(input),
             LogicalExpression::LiteralInteger(int) => int.to_field(input),
             LogicalExpression::LiteralFloat(float) => float.to_field(input),
-            LogicalExpression::Eq(eq)=> eq.to_field(input),
-            LogicalExpression::Neq(neq)=> neq.to_field(input),
-            LogicalExpression::Gt(gt)=> gt.to_field(input),
-            LogicalExpression::GtEq(gteq)=> gteq.to_field(input),
-            LogicalExpression::Lt(lt)=> lt.to_field(input),
-            LogicalExpression::LtEq(lteq)=> lteq.to_field(input),
+            LogicalExpression::Eq(eq) => eq.to_field(input),
+            LogicalExpression::Neq(neq) => neq.to_field(input),
+            LogicalExpression::Gt(gt) => gt.to_field(input),
+            LogicalExpression::GtEq(gteq) => gteq.to_field(input),
+            LogicalExpression::Lt(lt) => lt.to_field(input),
+            LogicalExpression::LtEq(lteq) => lteq.to_field(input),
             LogicalExpression::And(and) => and.to_field(input),
             LogicalExpression::Or(or) => or.to_field(input),
             LogicalExpression::Add(add) => add.to_field(input),
@@ -60,25 +60,25 @@ impl LogicalExpression {
             LogicalExpression::Avg(avg) => avg.to_field(input),
             LogicalExpression::Max(max) => max.to_field(input),
             LogicalExpression::Min(min) => min.to_field(input),
-            LogicalExpression::Count(count) => count.to_field(input)
+            LogicalExpression::Count(count) => count.to_field(input),
         }
     }
 }
 
 impl Display for LogicalExpression {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            match self {
-                LogicalExpression::Column(col) => write!(f, "{}", col),
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LogicalExpression::Column(col) => write!(f, "{}", col),
             LogicalExpression::LiteralBool(bool) => write!(f, "{}", bool),
             LogicalExpression::LiteralString(string) => write!(f, "{}", string),
             LogicalExpression::LiteralInteger(int) => write!(f, "{}", int),
             LogicalExpression::LiteralFloat(float) => write!(f, "{}", float),
-            LogicalExpression::Eq(eq)=> write!(f, "{}", eq),
-            LogicalExpression::Neq(neq)=> write!(f, "{}", neq),
-            LogicalExpression::Gt(gt)=> write!(f, "{}", gt),
-            LogicalExpression::GtEq(gteq)=> write!(f, "{}", gteq),
-            LogicalExpression::Lt(lt)=> write!(f, "{}", lt),
-            LogicalExpression::LtEq(lteq)=> write!(f, "{}", lteq),
+            LogicalExpression::Eq(eq) => write!(f, "{}", eq),
+            LogicalExpression::Neq(neq) => write!(f, "{}", neq),
+            LogicalExpression::Gt(gt) => write!(f, "{}", gt),
+            LogicalExpression::GtEq(gteq) => write!(f, "{}", gteq),
+            LogicalExpression::Lt(lt) => write!(f, "{}", lt),
+            LogicalExpression::LtEq(lteq) => write!(f, "{}", lteq),
             LogicalExpression::And(and) => write!(f, "{}", and),
             LogicalExpression::Or(or) => write!(f, "{}", or),
             LogicalExpression::Add(add) => write!(f, "{}", add),
@@ -90,14 +90,14 @@ impl Display for LogicalExpression {
             LogicalExpression::Avg(avg) => write!(f, "{}", avg),
             LogicalExpression::Max(max) => write!(f, "{}", max),
             LogicalExpression::Min(min) => write!(f, "{}", min),
-            LogicalExpression::Count(count) => write!(f, "{}", count)
-            }
+            LogicalExpression::Count(count) => write!(f, "{}", count),
         }
+    }
 }
 
 // Column expression
 pub struct Column {
-    name: String,
+    pub name: String,
 }
 
 impl Column {
@@ -129,7 +129,7 @@ impl fmt::Display for Column {
 // LiteralString expression
 
 pub struct LiteralBool {
-    value: bool,
+    pub value: bool,
 }
 
 impl LiteralBool {
@@ -138,7 +138,7 @@ impl LiteralBool {
     }
 }
 
-impl  LiteralBool {
+impl LiteralBool {
     #[inline]
     fn to_field(&self, _input: &LogicalPlan) -> Result<Field, Error> {
         Ok(Field {
@@ -156,7 +156,7 @@ impl fmt::Display for LiteralBool {
     }
 }
 pub struct LiteralString {
-    value: String,
+    pub value: String,
 }
 
 impl LiteralString {
@@ -165,7 +165,7 @@ impl LiteralString {
     }
 }
 
-impl  LiteralString {
+impl LiteralString {
     #[inline]
     fn to_field(&self, _input: &LogicalPlan) -> Result<Field, Error> {
         Ok(Field {
@@ -184,7 +184,7 @@ impl fmt::Display for LiteralString {
 }
 
 pub struct LiteralInteger {
-    value: i32,
+    pub value: i32,
 }
 
 impl LiteralInteger {
@@ -193,7 +193,7 @@ impl LiteralInteger {
     }
 }
 
-impl  LiteralInteger {
+impl LiteralInteger {
     #[inline]
     fn to_field(&self, _input: &LogicalPlan) -> Result<Field, Error> {
         Ok(Field {
@@ -212,7 +212,7 @@ impl fmt::Display for LiteralInteger {
 }
 
 pub struct LiteralFloat {
-    value: f64,
+    pub value: f64,
 }
 
 impl LiteralFloat {
@@ -221,7 +221,7 @@ impl LiteralFloat {
     }
 }
 
-impl  LiteralFloat {
+impl LiteralFloat {
     #[inline]
     fn to_field(&self, _input: &LogicalPlan) -> Result<Field, Error> {
         Ok(Field {
@@ -246,8 +246,8 @@ macro_rules! booleanBinaryExpression {
         pub struct $i {
             name: String,
             op: String,
-            left: LogicalExpression,
-            right: LogicalExpression,
+            pub(crate) left: LogicalExpression,
+            pub(crate) right: LogicalExpression,
         }
 
         impl $i {
@@ -261,7 +261,7 @@ macro_rules! booleanBinaryExpression {
             }
         }
 
-        impl  $i {
+        impl $i {
             #[inline]
             fn to_field(&self, _input: &LogicalPlan) -> Result<Field, Error> {
                 Ok(Field {
@@ -300,8 +300,8 @@ macro_rules! mathExpression {
         pub struct $i {
             name: String,
             op: String,
-            left: LogicalExpression,
-            right: LogicalExpression,
+            pub(crate) left: LogicalExpression,
+            pub(crate) right: LogicalExpression,
         }
 
         impl $i {
@@ -315,7 +315,7 @@ macro_rules! mathExpression {
             }
         }
 
-        impl  $i {
+        impl $i {
             #[inline]
             fn to_field(&self, input: &LogicalPlan) -> Result<Field, Error> {
                 Ok(Field {
@@ -349,7 +349,7 @@ macro_rules! aggregateExpression {
     ($i: ident, $name: expr) => {
         pub struct $i {
             name: String,
-            expr: LogicalExpression,
+            pub(crate) expr: LogicalExpression,
         }
 
         impl $i {
@@ -361,7 +361,7 @@ macro_rules! aggregateExpression {
             }
         }
 
-        impl  $i {
+        impl $i {
             #[inline]
             fn to_field(&self, input: &LogicalPlan) -> Result<Field, Error> {
                 Ok(Field {
@@ -392,7 +392,7 @@ aggregateExpression!(Min, "min".to_string());
 
 pub struct Count {
     name: String,
-    expr: LogicalExpression,
+    pub(crate) expr: LogicalExpression,
 }
 
 impl Count {
@@ -404,7 +404,7 @@ impl Count {
     }
 }
 
-impl  Count {
+impl Count {
     #[inline]
     fn to_field(&self, input: &LogicalPlan) -> Result<Field, Error> {
         Ok(Field {

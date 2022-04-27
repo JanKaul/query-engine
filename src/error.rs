@@ -8,6 +8,8 @@ pub enum Error {
     NoFieldInLogicalPlan(String),
     #[error("The expressions `{0}` and `{1}` have different sizes.")]
     DifferentSizes(String, String),
+    #[error("Physical expression `{0}` is not supported.")]
+    PhysicalExpressionNotSuported(String),
     #[error("Physical type `{0}` is not supported.")]
     PhysicalTypeNotSuported(String),
     #[error("Primitive type `{0}` is not supported.")]

@@ -1,5 +1,5 @@
 use arrow2::{
-    array::{BooleanArray, PrimitiveArray, Utf8Array, NullArray},
+    array::{BooleanArray, NullArray, PrimitiveArray, Utf8Array},
     datatypes::PhysicalType::{self},
     scalar::{BooleanScalar, PrimitiveScalar, Utf8Scalar},
 };
@@ -19,8 +19,9 @@ impl ColumnarValue {
         match self {
             ColumnarValue::Array(arr) => arr,
             ColumnarValue::Scalar(scalar) => {
-                let data_type= scalar.data_type().clone();
-                scalar_to_array(scalar,len).unwrap_or(Arc::new(NullArray::new(data_type, len)))}
+                let data_type = scalar.data_type().clone();
+                scalar_to_array(scalar, len).unwrap_or(Arc::new(NullArray::new(data_type, len)))
+            }
         }
     }
 }

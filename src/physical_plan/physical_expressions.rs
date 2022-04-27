@@ -25,7 +25,7 @@ pub trait PhysicalExpression: Display {
 
 #[derive(Clone)]
 pub struct ColumnExpression {
-    index: usize,
+    pub index: usize,
 }
 
 impl PhysicalExpression for ColumnExpression {
@@ -69,7 +69,7 @@ impl fmt::Display for ColumnExpression {
 
 #[derive(Clone)]
 pub struct LiteralBoolExpression {
-    value: BooleanScalar,
+    pub value: BooleanScalar,
 }
 
 impl LiteralBoolExpression {
@@ -94,7 +94,7 @@ impl fmt::Display for LiteralBoolExpression {
 
 #[derive(Clone)]
 pub struct LiteralStringExpression {
-    value: Utf8Scalar<i32>,
+    pub value: Utf8Scalar<i32>,
 }
 
 impl LiteralStringExpression {
@@ -119,7 +119,7 @@ impl fmt::Display for LiteralStringExpression {
 
 #[derive(Clone)]
 pub struct LiteralIntegerExpression {
-    value: PrimitiveScalar<i32>,
+    pub(crate) value: PrimitiveScalar<i32>,
 }
 
 impl LiteralIntegerExpression {
@@ -144,7 +144,7 @@ impl fmt::Display for LiteralIntegerExpression {
 
 #[derive(Clone)]
 pub struct LiteralFloatExpression {
-    value: PrimitiveScalar<f64>,
+    pub(crate) value: PrimitiveScalar<f64>,
 }
 
 impl LiteralFloatExpression {
@@ -167,14 +167,14 @@ impl fmt::Display for LiteralFloatExpression {
     }
 }
 
-macro_rules! booleanBinaryExpression {
+macro_rules! comparisonExpression {
     ($i: ident, $name1: ident, $name2: ident, $op: ident, $op_name: expr) => {
-        pub struct $i<E: PhysicalExpression> {
-            left: E,
-            right: E,
+        pub struct $i {
+            left: Box<dyn PhysicalExpression>,
+            right: Box<dyn PhysicalExpression>,
         }
 
-        impl<E: PhysicalExpression> PhysicalExpression for $i<E> {
+        impl PhysicalExpression for $i {
             fn evaluate(&self, input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error> {
                 let l = self.left.evaluate(input)?;
                 let r = self.right.evaluate(input)?;
@@ -210,8 +210,11 @@ macro_rules! booleanBinaryExpression {
             }
         }
 
-        impl<E: PhysicalExpression> $i<E> {
-            pub fn new(left: E, right: E) -> Self {
+        impl $i {
+            pub fn new(
+                left: Box<dyn PhysicalExpression>,
+                right: Box<dyn PhysicalExpression>,
+            ) -> Self {
                 $i {
                     left: left,
                     right: right,
@@ -219,25 +222,24 @@ macro_rules! booleanBinaryExpression {
             }
         }
 
-        impl<E: PhysicalExpression> fmt::Display for $i<E> {
+        impl fmt::Display for $i {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(f, "{} {} {}", self.left, $op_name, self.right)
             }
         }
     };
 }
-booleanBinaryExpression!(EqExpression, eq, eq_scalar, eq, "==".to_string());
-booleanBinaryExpression!(NeqExpression, neq, neq_scalar, ne, "==".to_string());
+comparisonExpression!(EqExpression, eq, eq_scalar, eq, "==".to_string());
+comparisonExpression!(NeqExpression, neq, neq_scalar, ne, "!=".to_string());
 
 macro_rules! mathExpression {
     ($i: ident, $name1: ident, $name2: ident, $op: ident, $op_name: expr) => {
-        #[derive(Clone)]
-        pub struct $i<E: PhysicalExpression> {
-            left: E,
-            right: E,
+        pub struct $i {
+            left: Box<dyn PhysicalExpression>,
+            right: Box<dyn PhysicalExpression>,
         }
 
-        impl<E: PhysicalExpression> PhysicalExpression for $i<E> {
+        impl PhysicalExpression for $i {
             fn evaluate(&self, input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error> {
                 let left = self.left.evaluate(input)?;
                 let right = self.right.evaluate(input)?;
@@ -321,8 +323,11 @@ macro_rules! mathExpression {
             }
         }
 
-        impl<E: PhysicalExpression> $i<E> {
-            pub fn new(left: E, right: E) -> Self {
+        impl $i {
+            pub fn new(
+                left: Box<dyn PhysicalExpression>,
+                right: Box<dyn PhysicalExpression>,
+            ) -> Self {
                 $i {
                     left: left,
                     right: right,
@@ -330,7 +335,7 @@ macro_rules! mathExpression {
             }
         }
 
-        impl<E: PhysicalExpression> fmt::Display for $i<E> {
+        impl fmt::Display for $i {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(f, "{} {} {}", self.left, $op_name, self.right)
             }
@@ -344,7 +349,11 @@ mathExpression!(MulExpression, mul, mul_scalar, mul, "*".to_string());
 mathExpression!(DivExpression, div, div_scalar, div, "/".to_string());
 
 pub trait Accumulator {
-    fn accumulate(&mut self, input: &Vec<ColumnarValue>, validity: Option<&Bitmap>) -> Result<(), Error>;
+    fn accumulate(
+        &mut self,
+        input: &Vec<ColumnarValue>,
+        validity: Option<&Bitmap>,
+    ) -> Result<(), Error>;
     fn final_value(self: Box<Self>) -> Result<ColumnarValue, Error>;
 }
 
@@ -359,24 +368,45 @@ macro_rules! aggregateExpression {
             value: Box<dyn Scalar>,
             index: usize,
         }
-        
+
         impl Accumulator for $acc {
-            fn accumulate(&mut self, input: &Vec<ColumnarValue>, validity: Option<&Bitmap>) -> Result<(), Error> {
+            fn accumulate(
+                &mut self,
+                input: &Vec<ColumnarValue>,
+                validity: Option<&Bitmap>,
+            ) -> Result<(), Error> {
                 let expr = &input[self.index];
                 let new = match expr {
                     ColumnarValue::Array(expr) => {
-                        let val = match (expr.validity(),validity) {
+                        let val = match (expr.validity(), validity) {
                             (Some(val1), Some(val2)) => Some(val1.bitand(val2)),
                             (Some(val), None) => Some(val.clone()),
                             (None, Some(val)) => Some(val.clone()),
-                            (None, None) => None
+                            (None, None) => None,
                         };
-                        compute::aggregate::$name1(&*(expr.borrow() as &dyn Array).with_validity(val)).map_err(|err| Error::ArrowError(err))
+                        compute::aggregate::$name1(
+                            &*(expr.borrow() as &dyn Array).with_validity(val),
+                        )
+                        .map_err(|err| Error::ArrowError(err))
                     }
                     ColumnarValue::Scalar(scalar) => match scalar.data_type().to_physical_type() {
-                        PhysicalType::Primitive(PrimitiveType::Float64) => Ok(Box::new(scalar.as_any().downcast_ref::<PrimitiveScalar<f64>>().ok_or(Error::DowncastError)?.clone()) as Box<dyn Scalar>),
-                        PhysicalType::Primitive(PrimitiveType::Int32) => Ok(Box::new(scalar.as_any().downcast_ref::<PrimitiveScalar<i32>>().ok_or(Error::DowncastError)?.clone()) as Box<dyn Scalar>),
-                        x => Err(Error::PhysicalTypeNotSuported(format!("{:?}",x)))
+                        PhysicalType::Primitive(PrimitiveType::Float64) => Ok(Box::new(
+                            scalar
+                                .as_any()
+                                .downcast_ref::<PrimitiveScalar<f64>>()
+                                .ok_or(Error::DowncastError)?
+                                .clone(),
+                        )
+                            as Box<dyn Scalar>),
+                        PhysicalType::Primitive(PrimitiveType::Int32) => Ok(Box::new(
+                            scalar
+                                .as_any()
+                                .downcast_ref::<PrimitiveScalar<i32>>()
+                                .ok_or(Error::DowncastError)?
+                                .clone(),
+                        )
+                            as Box<dyn Scalar>),
+                        x => Err(Error::PhysicalTypeNotSuported(format!("{:?}", x))),
                     },
                 }?;
                 let bool = match (
@@ -433,17 +463,17 @@ macro_rules! aggregateExpression {
                 Ok(ColumnarValue::Scalar(self.value))
             }
         }
-        pub struct $expr<E: PhysicalExpression> {
-            expr: E,
+        pub struct $expr {
+            expr: Box<dyn PhysicalExpression>,
         }
 
-        impl<E: PhysicalExpression> PhysicalExpression for $expr<E> {
+        impl PhysicalExpression for $expr {
             fn evaluate(&self, input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error> {
                 self.expr.evaluate(input)
             }
         }
-        
-        impl<E: PhysicalExpression + Clone> PhysicalAggregateExpression for $expr<E> {
+
+        impl PhysicalAggregateExpression for $expr {
             type Item = $acc;
             fn create_accumulator(&self, index: usize) -> Self::Item {
                 $acc {
@@ -452,14 +482,14 @@ macro_rules! aggregateExpression {
                 }
             }
         }
-        
-        impl<E: PhysicalExpression> $expr<E> {
-            pub fn new(expr: E) -> Self {
+
+        impl $expr {
+            pub fn new(expr: Box<dyn PhysicalExpression>) -> Self {
                 $expr { expr: expr }
             }
         }
-        
-        impl<E: PhysicalExpression> fmt::Display for $expr<E> {
+
+        impl fmt::Display for $expr {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(f, "{} {}", $op_name, self.expr)
             }

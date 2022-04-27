@@ -10,10 +10,14 @@ pub enum Error {
     DifferentSizes(String, String),
     #[error("Physical expression `{0}` is not supported.")]
     PhysicalExpressionNotSuported(String),
+    #[error("Physical plan `{0}` is not supported.")]
+    PhysicalPlanNotSuported(String),
     #[error("Physical type `{0}` is not supported.")]
     PhysicalTypeNotSuported(String),
     #[error("Primitive type `{0}` is not supported.")]
     PrimitiveTypeNotSuported(String),
+    #[error("Logical plan `{0}` is missing children.")]
+    MissingChildren(String),
     #[error("Error wile downcasting Array.")]
     DowncastError,
     #[error("Couldn't convert Scalar value `{0}` to array.")]

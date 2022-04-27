@@ -6,11 +6,14 @@ use arrow2::{
 use crate::{
     error::Error,
     logical_plan::{logical_expression::LogicalExpression, LogicalPlan},
-    physical_plan::physical_expressions::*,
+    physical_plan::{
+        physical_expressions::*, AggregateExec, PhysicalPlan, ProjectionExec, ScanExec,
+        SelectionExec,
+    },
 };
 
 impl LogicalExpression {
-    pub fn to_physical_expression(
+    pub(crate) fn to_physical_expression(
         self,
         input: &LogicalPlan,
     ) -> Result<Box<dyn PhysicalExpression>, Error> {
@@ -77,6 +80,87 @@ impl LogicalExpression {
                 Ok(Box::new(MinExpression::new(expr)) as Box<dyn PhysicalExpression>)
             }
             e => Err(Error::PhysicalExpressionNotSuported(format!("{}", e))),
+        }
+    }
+
+    pub(crate) fn to_physical_aggregate_expression(
+        self,
+        input: &LogicalPlan,
+    ) -> Result<Box<dyn PhysicalAggregateExpression>, Error> {
+        match self {
+            LogicalExpression::Max(max) => {
+                let expr = max.expr.to_physical_expression(input)?;
+                Ok(Box::new(MaxExpression::new(expr)) as Box<dyn PhysicalAggregateExpression>)
+            }
+            LogicalExpression::Min(min) => {
+                let expr = min.expr.to_physical_expression(input)?;
+                Ok(Box::new(MinExpression::new(expr)) as Box<dyn PhysicalAggregateExpression>)
+            }
+            e => Err(Error::PhysicalExpressionNotSuported(format!("{}", e))),
+        }
+    }
+}
+
+impl LogicalPlan {
+    pub(crate) fn to_physical_plan(self) -> Result<PhysicalPlan, Error> {
+        match self {
+            LogicalPlan::Scan(scan) => Ok(PhysicalPlan::Scan(ScanExec::new(
+                scan.data_source,
+                scan.projection,
+            ))),
+            LogicalPlan::Projection(proj) => {
+                let input = &proj.children[0];
+                let exprs = proj
+                    .exprs
+                    .into_iter()
+                    .map(|x| x.to_physical_expression(input))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let children = proj
+                    .children
+                    .into_iter()
+                    .map(|x| x.to_physical_plan())
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(PhysicalPlan::Projection(ProjectionExec::new(
+                    children,
+                    exprs,
+                    proj.schema,
+                )))
+            }
+            LogicalPlan::Selection(sel) => {
+                let expr = sel.expr.to_physical_expression(&sel.children[0])?;
+                let children = sel
+                    .children
+                    .into_iter()
+                    .map(|x| x.to_physical_plan())
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(PhysicalPlan::Selection(SelectionExec::new(
+                    children, expr, sel.schema,
+                )))
+            }
+            LogicalPlan::Aggregate(agg) => {
+                let input = &agg.children[0];
+                let group_exprs = agg
+                    .group_exprs
+                    .into_iter()
+                    .map(|x| x.to_physical_expression(input))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let agg_exprs = agg
+                    .aggregate_exprs
+                    .into_iter()
+                    .map(|x| x.to_physical_aggregate_expression(input))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let children = agg
+                    .children
+                    .into_iter()
+                    .map(|x| x.to_physical_plan())
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(PhysicalPlan::Aggregate(AggregateExec::new(
+                    children,
+                    group_exprs,
+                    agg_exprs,
+                    agg.schema,
+                )))
+            }
         }
     }
 }

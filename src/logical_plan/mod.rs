@@ -60,8 +60,8 @@ pub fn format_logical_plan(plan: &LogicalPlan, indent: usize) -> String {
 
 pub struct Scan {
     path: String,
-    data_source: DataSource,
-    projection: Option<Vec<String>>,
+    pub(crate) data_source: DataSource,
+    pub(crate) projection: Option<Vec<String>>,
     schema: Schema,
 }
 
@@ -117,9 +117,9 @@ impl Scan {
 
 // Projection
 pub struct Projection {
-    exprs: Vec<LogicalExpression>,
-    children: Vec<LogicalPlan>,
-    schema: Schema,
+    pub(crate) exprs: Vec<LogicalExpression>,
+    pub(crate) children: Vec<LogicalPlan>,
+    pub(crate) schema: Schema,
 }
 
 impl Projection {
@@ -168,9 +168,9 @@ impl Projection {
 // Selection
 
 pub struct Selection {
-    expr: LogicalExpression,
-    children: Vec<LogicalPlan>,
-    schema: Schema,
+    pub(crate) expr: LogicalExpression,
+    pub(crate) children: Vec<LogicalPlan>,
+    pub(crate) schema: Schema,
 }
 
 impl Selection {
@@ -209,10 +209,10 @@ impl Selection {
 
 // Aggregate
 pub struct Aggregate {
-    group_exprs: Vec<LogicalExpression>,
-    aggregate_exprs: Vec<LogicalExpression>,
-    children: Vec<LogicalPlan>,
-    schema: Schema,
+    pub(crate) group_exprs: Vec<LogicalExpression>,
+    pub(crate) aggregate_exprs: Vec<LogicalExpression>,
+    pub(crate) children: Vec<LogicalPlan>,
+    pub(crate) schema: Schema,
 }
 
 impl Aggregate {

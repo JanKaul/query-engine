@@ -66,8 +66,8 @@ impl PhysicalPlan {
 }
 
 pub struct ScanExec {
-    data_source: DataSource,
-    projection: Option<Vec<String>>,
+    pub(crate) data_source: DataSource,
+    pub(crate) projection: Option<Vec<String>>,
     schema: Schema,
 }
 
@@ -263,14 +263,14 @@ pub struct AggregateExec {
     input: Vec<PhysicalPlan>,
     schema: Schema,
     group_exprs: Vec<Box<dyn PhysicalExpression>>,
-    agg_exprs: Vec<Box<dyn PhysicalAggregateExpression<Item = Box<dyn Accumulator>>>>,
+    agg_exprs: Vec<Box<dyn PhysicalAggregateExpression>>,
 }
 
 impl AggregateExec {
     pub fn new(
         input: Vec<PhysicalPlan>,
         group_exprs: Vec<Box<dyn PhysicalExpression>>,
-        agg_exprs: Vec<Box<dyn PhysicalAggregateExpression<Item = Box<dyn Accumulator>>>>,
+        agg_exprs: Vec<Box<dyn PhysicalAggregateExpression>>,
         schema: Schema,
     ) -> Self {
         AggregateExec {

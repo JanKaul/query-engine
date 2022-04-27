@@ -358,8 +358,7 @@ pub trait Accumulator {
 }
 
 pub trait PhysicalAggregateExpression: PhysicalExpression {
-    type Item;
-    fn create_accumulator(&self, index: usize) -> Self::Item;
+    fn create_accumulator(&self, index: usize) -> Box<dyn Accumulator>;
 }
 
 macro_rules! aggregateExpression {
@@ -474,12 +473,11 @@ macro_rules! aggregateExpression {
         }
 
         impl PhysicalAggregateExpression for $expr {
-            type Item = $acc;
-            fn create_accumulator(&self, index: usize) -> Self::Item {
-                $acc {
+            fn create_accumulator(&self, index: usize) -> Box<dyn Accumulator> {
+                Box::new($acc {
                     value: Box::new(NullScalar::new()),
                     index: index,
-                }
+                })
             }
         }
 

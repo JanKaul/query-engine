@@ -105,9 +105,11 @@ impl fmt::Display for Scan {
 }
 
 impl Scan {
+    #[inline]
     fn schema(&self) -> Result<&Schema, Error> {
         Ok(&self.schema)
     }
+    #[inline]
     fn children(&self) -> Option<&[LogicalPlan]> {
         None
     }
@@ -115,13 +117,13 @@ impl Scan {
 
 // Projection
 pub struct Projection {
-    exprs: Vec<Box<dyn LogicalExpression>>,
+    exprs: Vec<LogicalExpression>,
     children: Vec<LogicalPlan>,
     schema: Schema,
 }
 
 impl Projection {
-    pub fn new(input: LogicalPlan, exprs: Vec<Box<dyn LogicalExpression>>) -> Self {
+    pub fn new(input: LogicalPlan, exprs: Vec<LogicalExpression>) -> Self {
         Projection {
             schema: Self::derive_schema(&exprs, &input),
             exprs: exprs,
@@ -129,7 +131,7 @@ impl Projection {
         }
     }
 
-    fn derive_schema(exprs: &Vec<Box<dyn LogicalExpression>>, input: &LogicalPlan) -> Schema {
+    fn derive_schema(exprs: &Vec<LogicalExpression>, input: &LogicalPlan) -> Schema {
         exprs
             .iter()
             .map(|expr| expr.to_field(input))
@@ -153,9 +155,11 @@ impl fmt::Display for Projection {
 }
 
 impl Projection {
+    #[inline]
     fn schema(&self) -> Result<&Schema, Error> {
         Ok(&self.schema)
     }
+    #[inline]
     fn children(&self) -> Option<&[LogicalPlan]> {
         Some(&self.children)
     }
@@ -164,13 +168,13 @@ impl Projection {
 // Selection
 
 pub struct Selection {
-    expr: Box<dyn LogicalExpression>,
+    expr: LogicalExpression,
     children: Vec<LogicalPlan>,
     schema: Schema,
 }
 
 impl Selection {
-    pub fn new(input: LogicalPlan, expr: Box<dyn LogicalExpression>) -> Self {
+    pub fn new(input: LogicalPlan, expr: LogicalExpression) -> Self {
         Selection {
             schema: Self::derive_schema(&expr, &input),
             expr: expr,
@@ -178,7 +182,7 @@ impl Selection {
         }
     }
 
-    fn derive_schema(expr: &Box<dyn LogicalExpression>, input: &LogicalPlan) -> Schema {
+    fn derive_schema(expr: &LogicalExpression, input: &LogicalPlan) -> Schema {
         expr.to_field(input)
             .map(|x| vec![x])
             .map(|x| x.into())
@@ -193,9 +197,11 @@ impl fmt::Display for Selection {
 }
 
 impl Selection {
+    #[inline]
     fn schema(&self) -> Result<&Schema, Error> {
         Ok(&self.schema)
     }
+    #[inline]
     fn children(&self) -> Option<&[LogicalPlan]> {
         Some(&self.children)
     }
@@ -203,8 +209,8 @@ impl Selection {
 
 // Aggregate
 pub struct Aggregate {
-    group_exprs: Vec<Box<dyn LogicalExpression>>,
-    aggregate_exprs: Vec<Box<dyn LogicalExpression>>,
+    group_exprs: Vec<LogicalExpression>,
+    aggregate_exprs: Vec<LogicalExpression>,
     children: Vec<LogicalPlan>,
     schema: Schema,
 }
@@ -212,8 +218,8 @@ pub struct Aggregate {
 impl Aggregate {
     pub fn new(
         input: LogicalPlan,
-        group_exprs: Vec<Box<dyn LogicalExpression>>,
-        aggregate_exprs: Vec<Box<dyn LogicalExpression>>,
+        group_exprs: Vec<LogicalExpression>,
+        aggregate_exprs: Vec<LogicalExpression>,
     ) -> Self {
         Aggregate {
             schema: Self::derive_schema(&group_exprs, &aggregate_exprs, &input),
@@ -224,8 +230,8 @@ impl Aggregate {
     }
 
     fn derive_schema(
-        group_exprs: &Vec<Box<dyn LogicalExpression>>,
-        aggregate_exprs: &Vec<Box<dyn LogicalExpression>>,
+        group_exprs: &Vec<LogicalExpression>,
+        aggregate_exprs: &Vec<LogicalExpression>,
         input: &LogicalPlan,
     ) -> Schema {
         group_exprs
@@ -253,9 +259,11 @@ impl fmt::Display for Aggregate {
 }
 
 impl Aggregate {
+    #[inline]
     fn schema(&self) -> Result<&Schema, Error> {
         Ok(&self.schema)
     }
+    #[inline]
     fn children(&self) -> Option<&[LogicalPlan]> {
         Some(&self.children)
     }

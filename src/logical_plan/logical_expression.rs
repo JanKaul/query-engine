@@ -1,4 +1,4 @@
-use std::fmt;
+use std::fmt::{self, Display};
 
 use arrow2::{
     datatypes,
@@ -9,8 +9,90 @@ use crate::error::Error;
 
 use super::LogicalPlan;
 
-pub trait LogicalExpression: fmt::Display {
-    fn to_field(&self, input: &LogicalPlan) -> Result<Field, Error>;
+pub enum LogicalExpression {
+    Column(Column),
+    LiteralBool(LiteralBool),
+    LiteralString(LiteralString),
+    LiteralInteger(LiteralInteger),
+    LiteralFloat(LiteralFloat),
+    Eq(Box<Eq>),
+    Neq(Box<Neq>),
+    Gt(Box<Gt>),
+    GtEq(Box<GtEq>),
+    Lt(Box<Lt>),
+    LtEq(Box<LtEq>),
+    And(Box<And>),
+    Or(Box<Or>),
+    Add(Box<Add>),
+    Sub(Box<Sub>),
+    Mul(Box<Mul>),
+    Div(Box<Div>),
+    Mod(Box<Mod>),
+    Sum(Box<Sum>),
+    Avg(Box<Avg>),
+    Max(Box<Max>),
+    Min(Box<Min>),
+    Count(Box<Count>)
+}
+
+impl LogicalExpression {
+    pub fn to_field(&self, input: &LogicalPlan) -> Result<Field, Error> {
+        match self {
+            LogicalExpression::Column(col) => col.to_field(input),
+            LogicalExpression::LiteralBool(bool) => bool.to_field(input),
+            LogicalExpression::LiteralString(string) => string.to_field(input),
+            LogicalExpression::LiteralInteger(int) => int.to_field(input),
+            LogicalExpression::LiteralFloat(float) => float.to_field(input),
+            LogicalExpression::Eq(eq)=> eq.to_field(input),
+            LogicalExpression::Neq(neq)=> neq.to_field(input),
+            LogicalExpression::Gt(gt)=> gt.to_field(input),
+            LogicalExpression::GtEq(gteq)=> gteq.to_field(input),
+            LogicalExpression::Lt(lt)=> lt.to_field(input),
+            LogicalExpression::LtEq(lteq)=> lteq.to_field(input),
+            LogicalExpression::And(and) => and.to_field(input),
+            LogicalExpression::Or(or) => or.to_field(input),
+            LogicalExpression::Add(add) => add.to_field(input),
+            LogicalExpression::Sub(sub) => sub.to_field(input),
+            LogicalExpression::Mul(mul) => mul.to_field(input),
+            LogicalExpression::Div(div) => div.to_field(input),
+            LogicalExpression::Mod(modu) => modu.to_field(input),
+            LogicalExpression::Sum(sum) => sum.to_field(input),
+            LogicalExpression::Avg(avg) => avg.to_field(input),
+            LogicalExpression::Max(max) => max.to_field(input),
+            LogicalExpression::Min(min) => min.to_field(input),
+            LogicalExpression::Count(count) => count.to_field(input)
+        }
+    }
+}
+
+impl Display for LogicalExpression {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                LogicalExpression::Column(col) => write!(f, "{}", col),
+            LogicalExpression::LiteralBool(bool) => write!(f, "{}", bool),
+            LogicalExpression::LiteralString(string) => write!(f, "{}", string),
+            LogicalExpression::LiteralInteger(int) => write!(f, "{}", int),
+            LogicalExpression::LiteralFloat(float) => write!(f, "{}", float),
+            LogicalExpression::Eq(eq)=> write!(f, "{}", eq),
+            LogicalExpression::Neq(neq)=> write!(f, "{}", neq),
+            LogicalExpression::Gt(gt)=> write!(f, "{}", gt),
+            LogicalExpression::GtEq(gteq)=> write!(f, "{}", gteq),
+            LogicalExpression::Lt(lt)=> write!(f, "{}", lt),
+            LogicalExpression::LtEq(lteq)=> write!(f, "{}", lteq),
+            LogicalExpression::And(and) => write!(f, "{}", and),
+            LogicalExpression::Or(or) => write!(f, "{}", or),
+            LogicalExpression::Add(add) => write!(f, "{}", add),
+            LogicalExpression::Sub(sub) => write!(f, "{}", sub),
+            LogicalExpression::Mul(mul) => write!(f, "{}", mul),
+            LogicalExpression::Div(div) => write!(f, "{}", div),
+            LogicalExpression::Mod(modu) => write!(f, "{}", modu),
+            LogicalExpression::Sum(sum) => write!(f, "{}", sum),
+            LogicalExpression::Avg(avg) => write!(f, "{}", avg),
+            LogicalExpression::Max(max) => write!(f, "{}", max),
+            LogicalExpression::Min(min) => write!(f, "{}", min),
+            LogicalExpression::Count(count) => write!(f, "{}", count)
+            }
+        }
 }
 
 // Column expression
@@ -24,7 +106,8 @@ impl Column {
     }
 }
 
-impl LogicalExpression for Column {
+impl Column {
+    #[inline]
     fn to_field(&self, input: &LogicalPlan) -> Result<Field, Error> {
         input
             .schema()?
@@ -55,7 +138,8 @@ impl LiteralBool {
     }
 }
 
-impl LogicalExpression for LiteralBool {
+impl  LiteralBool {
+    #[inline]
     fn to_field(&self, _input: &LogicalPlan) -> Result<Field, Error> {
         Ok(Field {
             name: self.value.to_string(),
@@ -81,7 +165,8 @@ impl LiteralString {
     }
 }
 
-impl LogicalExpression for LiteralString {
+impl  LiteralString {
+    #[inline]
     fn to_field(&self, _input: &LogicalPlan) -> Result<Field, Error> {
         Ok(Field {
             name: self.value.clone(),
@@ -108,7 +193,8 @@ impl LiteralInteger {
     }
 }
 
-impl LogicalExpression for LiteralInteger {
+impl  LiteralInteger {
+    #[inline]
     fn to_field(&self, _input: &LogicalPlan) -> Result<Field, Error> {
         Ok(Field {
             name: self.value.to_string(),
@@ -135,7 +221,8 @@ impl LiteralFloat {
     }
 }
 
-impl LogicalExpression for LiteralFloat {
+impl  LiteralFloat {
+    #[inline]
     fn to_field(&self, _input: &LogicalPlan) -> Result<Field, Error> {
         Ok(Field {
             name: self.value.to_string(),
@@ -156,15 +243,15 @@ impl fmt::Display for LiteralFloat {
 
 macro_rules! booleanBinaryExpression {
     ($i: ident, $name: expr, $op: expr) => {
-        pub struct $i<L: LogicalExpression, R: LogicalExpression> {
+        pub struct $i {
             name: String,
             op: String,
-            left: L,
-            right: R,
+            left: LogicalExpression,
+            right: LogicalExpression,
         }
 
-        impl<L: LogicalExpression, R: LogicalExpression> $i<L, R> {
-            pub fn new(left: L, right: R) -> Self {
+        impl $i {
+            pub fn new(left: LogicalExpression, right: LogicalExpression) -> Self {
                 $i {
                     name: $name,
                     op: $op,
@@ -174,7 +261,8 @@ macro_rules! booleanBinaryExpression {
             }
         }
 
-        impl<L: LogicalExpression, R: LogicalExpression> LogicalExpression for $i<L, R> {
+        impl  $i {
+            #[inline]
             fn to_field(&self, _input: &LogicalPlan) -> Result<Field, Error> {
                 Ok(Field {
                     name: self.name.clone(),
@@ -185,7 +273,7 @@ macro_rules! booleanBinaryExpression {
             }
         }
 
-        impl<L: LogicalExpression, R: LogicalExpression> fmt::Display for $i<L, R> {
+        impl fmt::Display for $i {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(f, "{} {} {}", self.left, self.op, self.right)
             }
@@ -209,15 +297,15 @@ booleanBinaryExpression!(Or, "or".to_string(), "||".to_string());
 
 macro_rules! mathExpression {
     ($i: ident, $name: expr, $op: expr) => {
-        pub struct $i<L: LogicalExpression, R: LogicalExpression> {
+        pub struct $i {
             name: String,
             op: String,
-            left: L,
-            right: R,
+            left: LogicalExpression,
+            right: LogicalExpression,
         }
 
-        impl<L: LogicalExpression, R: LogicalExpression> $i<L, R> {
-            pub fn new(left: L, right: R) -> Self {
+        impl $i {
+            pub fn new(left: LogicalExpression, right: LogicalExpression) -> Self {
                 $i {
                     name: $name,
                     op: $op,
@@ -227,7 +315,8 @@ macro_rules! mathExpression {
             }
         }
 
-        impl<L: LogicalExpression, R: LogicalExpression> LogicalExpression for $i<L, R> {
+        impl  $i {
+            #[inline]
             fn to_field(&self, input: &LogicalPlan) -> Result<Field, Error> {
                 Ok(Field {
                     name: self.name.clone(),
@@ -238,7 +327,7 @@ macro_rules! mathExpression {
             }
         }
 
-        impl<L: LogicalExpression, R: LogicalExpression> fmt::Display for $i<L, R> {
+        impl fmt::Display for $i {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(f, "{} {} {}", self.left, self.op, self.right)
             }
@@ -254,17 +343,17 @@ mathExpression!(Mod, "mod".to_string(), "%".to_string());
 
 // AggregateExpressions
 
-pub trait LogicalAggregateExpression: LogicalExpression {}
+pub trait LogicalAggregateExpression {}
 
 macro_rules! aggregateExpression {
     ($i: ident, $name: expr) => {
-        pub struct $i<T: LogicalExpression> {
+        pub struct $i {
             name: String,
-            expr: T,
+            expr: LogicalExpression,
         }
 
-        impl<T: LogicalExpression> $i<T> {
-            pub fn new(expr: T) -> Self {
+        impl $i {
+            pub fn new(expr: LogicalExpression) -> Self {
                 $i {
                     name: $name,
                     expr: expr,
@@ -272,7 +361,8 @@ macro_rules! aggregateExpression {
             }
         }
 
-        impl<T: LogicalExpression> LogicalExpression for $i<T> {
+        impl  $i {
+            #[inline]
             fn to_field(&self, input: &LogicalPlan) -> Result<Field, Error> {
                 Ok(Field {
                     name: self.name.clone(),
@@ -283,9 +373,9 @@ macro_rules! aggregateExpression {
             }
         }
 
-        impl<T: LogicalExpression> LogicalAggregateExpression for $i<T> {}
+        impl LogicalAggregateExpression for $i {}
 
-        impl<T: LogicalExpression> fmt::Display for $i<T> {
+        impl fmt::Display for $i {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 write!(f, "{} ({})", self.name, self.expr)
             }
@@ -300,13 +390,13 @@ aggregateExpression!(Min, "min".to_string());
 
 // Count Expression
 
-pub struct Count<T: LogicalExpression> {
+pub struct Count {
     name: String,
-    expr: T,
+    expr: LogicalExpression,
 }
 
-impl<T: LogicalExpression> Count<T> {
-    pub fn new(expr: T) -> Self {
+impl Count {
+    pub fn new(expr: LogicalExpression) -> Self {
         Count {
             name: "count".to_string(),
             expr: expr,
@@ -314,7 +404,8 @@ impl<T: LogicalExpression> Count<T> {
     }
 }
 
-impl<T: LogicalExpression> LogicalExpression for Count<T> {
+impl  Count {
+    #[inline]
     fn to_field(&self, input: &LogicalPlan) -> Result<Field, Error> {
         Ok(Field {
             name: self.name.clone(),
@@ -325,51 +416,51 @@ impl<T: LogicalExpression> LogicalExpression for Count<T> {
     }
 }
 
-impl<T: LogicalExpression> fmt::Display for Count<T> {
+impl fmt::Display for Count {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} ({})", self.name, self.expr)
     }
 }
 
-pub trait LogicalExpressionMethods: LogicalExpression {
-    fn eq<T: LogicalExpression>(self, other: T) -> Eq<Self, T>
+pub trait LogicalExpressionMethods {
+    fn eq(self, other: LogicalExpression) -> LogicalExpression
     where
         Self: Sized;
-    fn neq<T: LogicalExpression>(self, other: T) -> Neq<Self, T>
+    fn neq(self, other: LogicalExpression) -> LogicalExpression
     where
         Self: Sized;
-    fn gt<T: LogicalExpression>(self, other: T) -> Gt<Self, T>
+    fn gt(self, other: LogicalExpression) -> LogicalExpression
     where
         Self: Sized;
-    fn gteq<T: LogicalExpression>(self, other: T) -> GtEq<Self, T>
+    fn gteq(self, other: LogicalExpression) -> LogicalExpression
     where
         Self: Sized;
-    fn lt<T: LogicalExpression>(self, other: T) -> Lt<Self, T>
+    fn lt(self, other: LogicalExpression) -> LogicalExpression
     where
         Self: Sized;
-    fn lteq<T: LogicalExpression>(self, other: T) -> LtEq<Self, T>
+    fn lteq(self, other: LogicalExpression) -> LogicalExpression
     where
         Self: Sized;
-    fn and<T: LogicalExpression>(self, other: T) -> And<Self, T>
+    fn and(self, other: LogicalExpression) -> LogicalExpression
     where
         Self: Sized;
-    fn or<T: LogicalExpression>(self, other: T) -> Or<Self, T>
+    fn or(self, other: LogicalExpression) -> LogicalExpression
     where
         Self: Sized;
 }
 
 macro_rules! booleanMethod {
     ($name: ident, $t: ident) => {
-        fn $name<O: LogicalExpression>(self, other: O) -> $t<Self, O>
+        fn $name(self, other: LogicalExpression) -> LogicalExpression
         where
             Self: Sized,
         {
-            $t::new(self, other)
+            LogicalExpression::$t(Box::new($t::new(self, other)))
         }
     };
 }
 
-impl<T: LogicalExpression> LogicalExpressionMethods for T {
+impl LogicalExpressionMethods for LogicalExpression {
     booleanMethod!(eq, Eq);
     booleanMethod!(neq, Neq);
     booleanMethod!(gt, Gt);

@@ -8,14 +8,14 @@ use crate::{
 };
 
 pub trait DataFrameTrait {
-    fn project(self, exprs: Vec<Box<dyn LogicalExpression>>) -> Self;
+    fn project(self, exprs: Vec<LogicalExpression>) -> Self;
 
-    fn filter(self, exprs: Box<dyn LogicalExpression>) -> Self;
+    fn filter(self, exprs: LogicalExpression) -> Self;
 
     fn aggregate(
         self,
-        group_by: Vec<Box<dyn LogicalExpression>>,
-        aggregate_expr: Vec<Box<dyn LogicalExpression>>,
+        group_by: Vec<LogicalExpression>,
+        aggregate_expr: Vec<LogicalExpression>,
     ) -> Self;
 
     fn schema(&self) -> &Schema;
@@ -39,14 +39,14 @@ impl DataFrame {
 }
 
 impl DataFrameTrait for DataFrame {
-    fn project(self, exprs: Vec<Box<dyn LogicalExpression>>) -> Self {
+    fn project(self, exprs: Vec<LogicalExpression>) -> Self {
         Self::new(LogicalPlan::Projection(Projection::new(
             self.logical_plan(),
             exprs,
         )))
     }
 
-    fn filter(self, exprs: Box<dyn LogicalExpression>) -> Self {
+    fn filter(self, exprs: LogicalExpression) -> Self {
         Self::new(LogicalPlan::Selection(Selection::new(
             self.logical_plan(),
             exprs,
@@ -55,8 +55,8 @@ impl DataFrameTrait for DataFrame {
 
     fn aggregate(
         self,
-        group_by: Vec<Box<dyn LogicalExpression>>,
-        aggregate_expr: Vec<Box<dyn LogicalExpression>>,
+        group_by: Vec<LogicalExpression>,
+        aggregate_expr: Vec<LogicalExpression>,
     ) -> Self {
         Self::new(LogicalPlan::Aggregate(Aggregate::new(
             self.logical_plan(),

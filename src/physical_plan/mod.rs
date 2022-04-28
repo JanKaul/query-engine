@@ -15,7 +15,7 @@ use arrow2::{
     array::{Array, BooleanArray},
     chunk::Chunk,
     compute,
-    datatypes::{Field, Schema},
+    datatypes::Schema,
     error::ArrowError,
 };
 
@@ -25,11 +25,11 @@ use crate::{
     error::Error,
 };
 
-use self::physical_expressions::{Accumulator, PhysicalAggregateExpression, PhysicalExpression};
+use self::physical_expressions::{PhysicalAggregateExpression, PhysicalExpression};
 
 pub mod physical_expressions;
 
-type Batch = Result<Chunk<Arc<dyn Array>>, Error>;
+pub type Batch = Result<Chunk<Arc<dyn Array>>, Error>;
 
 pub enum PhysicalPlan {
     Scan(ScanExec),
@@ -68,29 +68,15 @@ impl PhysicalPlan {
 pub struct ScanExec {
     pub(crate) data_source: DataSource,
     pub(crate) projection: Option<Vec<String>>,
-    schema: Schema,
+    pub(crate) schema: Schema,
 }
 
 impl ScanExec {
-    pub fn new(data_source: DataSource, projection: Option<Vec<String>>) -> Self {
+    pub fn new(data_source: DataSource, projection: Option<Vec<String>>, schema: Schema) -> Self {
         ScanExec {
-            schema: Self::derive_schema(&data_source, &projection),
+            schema: schema,
             data_source: data_source,
             projection: projection,
-        }
-    }
-
-    fn derive_schema(data_source: &DataSource, projection: &Option<Vec<String>>) -> Schema {
-        match projection {
-            Some(pro) => data_source
-                .schema()
-                .fields
-                .iter()
-                .filter(|x| pro.contains(&x.name))
-                .map(|y| y.clone())
-                .collect::<Vec<Field>>()
-                .into(),
-            None => data_source.schema(),
         }
     }
 }

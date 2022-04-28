@@ -107,6 +107,7 @@ impl LogicalPlan {
             LogicalPlan::Scan(scan) => Ok(PhysicalPlan::Scan(ScanExec::new(
                 scan.data_source,
                 scan.projection,
+                scan.schema,
             ))),
             LogicalPlan::Projection(proj) => {
                 let input = &proj.children[0];

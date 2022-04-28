@@ -62,7 +62,7 @@ pub struct Scan {
     path: String,
     pub(crate) data_source: DataSource,
     pub(crate) projection: Option<Vec<String>>,
-    schema: Schema,
+    pub(crate) schema: Schema,
 }
 
 impl Scan {

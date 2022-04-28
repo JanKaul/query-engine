@@ -1,7 +1,10 @@
-use arrow2::datatypes::Schema;
+use std::sync::Arc;
+
+use arrow2::{array::Array, chunk::Chunk, datatypes::Schema};
 
 use crate::{
     data_source::{DataSource, ParquetDataSource},
+    error::Error,
     logical_plan::{
         logical_expression::LogicalExpression, Aggregate, LogicalPlan, Projection, Scan, Selection,
     },
@@ -71,5 +74,11 @@ impl DataFrameTrait for DataFrame {
 
     fn logical_plan(self) -> LogicalPlan {
         self.plan
+    }
+}
+
+impl DataFrame {
+    pub fn execute(self) -> Result<Vec<Chunk<Arc<dyn Array>>>, Error> {
+        self.plan.to_physical_plan()?.execute().collect()
     }
 }

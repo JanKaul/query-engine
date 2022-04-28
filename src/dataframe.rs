@@ -79,6 +79,6 @@ impl DataFrameTrait for DataFrame {
 
 impl DataFrame {
     pub fn execute(self) -> Result<Vec<Chunk<Arc<dyn Array>>>, Error> {
-        self.plan.to_physical_plan()?.execute().collect()
+        self.plan.to_physical_plan()?.execute()?.collect()
     }
 }

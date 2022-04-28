@@ -1,5 +1,5 @@
 use arrow2::{
-    array::{BooleanArray, NullArray, PrimitiveArray, Utf8Array},
+    array::{BooleanArray, PrimitiveArray, Utf8Array},
     datatypes::PhysicalType::{self},
     scalar::{BooleanScalar, PrimitiveScalar, Utf8Scalar},
 };
@@ -18,10 +18,7 @@ impl ColumnarValue {
     pub fn to_array(self, len: usize) -> Arc<dyn Array> {
         match self {
             ColumnarValue::Array(arr) => arr,
-            ColumnarValue::Scalar(scalar) => {
-                let data_type = scalar.data_type().clone();
-                scalar_to_array(scalar, len).unwrap_or(Arc::new(NullArray::new(data_type, len)))
-            }
+            ColumnarValue::Scalar(scalar) => scalar_to_array(scalar, len).unwrap(),
         }
     }
 }

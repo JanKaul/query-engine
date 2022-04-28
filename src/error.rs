@@ -18,6 +18,10 @@ pub enum Error {
     PrimitiveTypeNotSuported(String),
     #[error("Logical plan `{0}` is missing children.")]
     MissingChildren(String),
+    #[error("Physical plan `{0}` is missing its input.")]
+    MissingInputPhysicalPlan(String),
+    #[error("The hashmap for aggregation is empty.")]
+    EmptyHashmapForAggregate,
     #[error("Error wile downcasting Array.")]
     DowncastError,
     #[error("Couldn't convert Scalar value `{0}` to array.")]

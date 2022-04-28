@@ -55,7 +55,7 @@ impl PhysicalPlan {
             PhysicalPlan::Aggregate(agg) => agg.children(),
         }
     }
-    pub fn execute(self) -> Box<dyn Iterator<Item = Batch>> {
+    pub fn execute(self) -> Result<Box<dyn Iterator<Item = Batch>>, Error> {
         match self {
             PhysicalPlan::Scan(scan) => scan.execute(),
             PhysicalPlan::Projection(proj) => proj.execute(),
@@ -102,10 +102,10 @@ impl ScanExec {
     fn children(&self) -> Option<&[PhysicalPlan]> {
         None
     }
-    fn execute(self) -> Box<dyn Iterator<Item = Batch>> {
-        Box::new(ScanIterator {
+    fn execute(self) -> Result<Box<dyn Iterator<Item = Batch>>, Error> {
+        Ok(Box::new(ScanIterator {
             input_iter: self.data_source.scan(self.projection),
-        })
+        }))
     }
 }
 
@@ -128,7 +128,6 @@ impl ProjectionExec {
         }
     }
 }
-
 pub struct ProjectionIterator<I: Iterator<Item = Batch>> {
     input_iter: I,
     exprs: Vec<Box<dyn PhysicalExpression>>,
@@ -164,13 +163,15 @@ impl ProjectionExec {
     fn children(&self) -> Option<&[PhysicalPlan]> {
         Some(&self.input)
     }
-    fn execute(self) -> Box<dyn Iterator<Item = Batch>> {
+    fn execute(self) -> Result<Box<dyn Iterator<Item = Batch>>, Error> {
         let mut vec = self.input;
-        let input = vec.pop().unwrap();
-        Box::new(ProjectionIterator {
-            input_iter: input.execute(),
+        let input = vec
+            .pop()
+            .ok_or(Error::MissingInputPhysicalPlan("Projection".to_string()))?;
+        Ok(Box::new(ProjectionIterator {
+            input_iter: input.execute()?,
             exprs: self.exprs,
-        })
+        }))
     }
 }
 
@@ -235,13 +236,15 @@ impl SelectionExec {
     fn children(&self) -> Option<&[PhysicalPlan]> {
         Some(&self.input)
     }
-    fn execute(self) -> Box<dyn Iterator<Item = Batch>> {
+    fn execute(self) -> Result<Box<dyn Iterator<Item = Batch>>, Error> {
         let mut vec = self.input;
-        let input = vec.pop().unwrap();
-        Box::new(SelectionIterator {
-            input_iter: input.execute(),
+        let input = vec
+            .pop()
+            .ok_or(Error::MissingInputPhysicalPlan("Selection".to_string()))?;
+        Ok(Box::new(SelectionIterator {
+            input_iter: input.execute()?,
             expr: self.expr,
-        })
+        }))
     }
 }
 
@@ -286,84 +289,98 @@ impl AggregateExec {
     fn children(&self) -> Option<&[PhysicalPlan]> {
         Some(&self.input)
     }
-    fn execute(self) -> Box<dyn Iterator<Item = Batch>> {
+    fn execute(self) -> Result<Box<dyn Iterator<Item = Batch>>, Error> {
         let mut vec = self.input;
-        let input = vec.pop().unwrap();
+        let input = vec
+            .pop()
+            .ok_or(Error::MissingInputPhysicalPlan("Aggregate".to_string()))?;
         let mut hashmap = HashMap::new();
-        input.execute().for_each(|res| match res {
-            Ok(batch) => {
-                let length = batch.len();
-                let mut hashset = HashSet::new();
-                let group_keys = Chunk::new(
-                    self.group_exprs
+        input
+            .execute()?
+            .map(|res| match res {
+                Ok(batch) => {
+                    let length = batch.len();
+                    let mut hashset = HashSet::new();
+                    let group_keys = Chunk::new(
+                        self.group_exprs
+                            .iter()
+                            .map(|expr| expr.evaluate(&batch).map(|x| x.to_array(length)))
+                            .collect::<Result<Vec<Arc<dyn Array>>, Error>>()?,
+                    );
+                    let group_hashes = group_keys.iter().fold(
+                        compute::hash::hash_primitive::<u64>(&PrimitiveArray::new(
+                            DataType::UInt64,
+                            Buffer::new_zeroed(length),
+                            None,
+                        )),
+                        |acc: PrimitiveArray<u64>, x| {
+                            let new = compute::hash::hash(x.borrow()).unwrap();
+                            acc.add(&new)
+                        },
+                    );
+                    let agg_input = self
+                        .agg_exprs
                         .iter()
-                        .map(|expr| expr.evaluate(&batch).map(|x| x.to_array(length)))
-                        .collect::<Result<Vec<Arc<dyn Array>>, Error>>()
-                        .unwrap_or(Vec::new()),
-                );
-                let group_hashes = group_keys.iter().fold(
-                    compute::hash::hash_primitive::<u64>(&PrimitiveArray::new(
-                        DataType::UInt64,
-                        Buffer::new_zeroed(length),
-                        None,
-                    )),
-                    |acc: PrimitiveArray<u64>, x| {
-                        let new = compute::hash::hash(x.borrow()).unwrap();
-                        acc.add(&new)
-                    },
-                );
-                let agg_input = self
-                    .agg_exprs
-                    .iter()
-                    .map(|expr| expr.evaluate(&batch))
-                    .collect::<Result<Vec<ColumnarValue>, Error>>()
-                    .unwrap_or(Vec::new());
-                group_hashes
-                    .iter()
-                    .enumerate()
-                    .for_each(|(i, key)| match key {
-                        Some(key) => {
-                            if !hashset.contains(key) {
-                                hashset.insert(key);
-                                let validity = Bitmap::from_trusted_len_iter(
-                                    compute::comparison::eq_scalar(
-                                        &group_hashes,
-                                        &PrimitiveScalar::new(DataType::UInt64, Some(key.clone())),
-                                    )
-                                    .values_iter(),
-                                );
-                                if !hashmap.contains_key(key) {
-                                    let accumulators = self
-                                        .agg_exprs
-                                        .iter()
-                                        .enumerate()
-                                        .map(|(i, x)| x.create_accumulator(i))
-                                        .collect::<Vec<_>>();
-                                    let group_keys = group_keys
-                                        .iter()
-                                        .map(|x| x.slice(i, 1))
-                                        .map(|y| Arc::from(y))
-                                        .collect::<Vec<_>>();
-                                    hashmap.insert(*key, (accumulators, group_keys));
-                                }
-                                hashmap.get_mut(key).map(|(accs, _)| {
-                                    accs.iter_mut().for_each(|acc| {
-                                        acc.accumulate(&agg_input, Some(&validity)).unwrap();
-                                    })
-                                });
-                                ()
+                        .map(|expr| expr.evaluate(&batch))
+                        .collect::<Result<Vec<ColumnarValue>, Error>>()?;
+                    group_hashes
+                        .iter()
+                        .enumerate()
+                        .map(|(i, key)| match key {
+                            Some(key) => {
+                                if !hashset.contains(key) {
+                                    hashset.insert(key);
+                                    let validity = Bitmap::from_trusted_len_iter(
+                                        compute::comparison::eq_scalar(
+                                            &group_hashes,
+                                            &PrimitiveScalar::new(
+                                                DataType::UInt64,
+                                                Some(key.clone()),
+                                            ),
+                                        )
+                                        .values_iter(),
+                                    );
+                                    if !hashmap.contains_key(key) {
+                                        let accumulators = self
+                                            .agg_exprs
+                                            .iter()
+                                            .enumerate()
+                                            .map(|(i, x)| x.create_accumulator(i))
+                                            .collect::<Vec<_>>();
+                                        let group_keys = group_keys
+                                            .iter()
+                                            .map(|x| x.slice(i, 1))
+                                            .map(|y| Arc::from(y))
+                                            .collect::<Vec<_>>();
+                                        hashmap.insert(*key, (accumulators, group_keys));
+                                    }
+                                    hashmap
+                                        .get_mut(key)
+                                        .unwrap()
+                                        .0
+                                        .iter_mut()
+                                        .map(|acc| acc.accumulate(&agg_input, Some(&validity)))
+                                        .collect::<Result<Vec<()>, Error>>()?;
+                                };
+                                Ok(())
                             }
-                        }
-                        None => (),
-                    })
-            }
-            Err(_) => (),
-        });
+                            None => Ok(()),
+                        })
+                        .collect::<Result<Vec<()>, Error>>()?;
+                    Ok(())
+                }
+                Err(e) => Err(e),
+            })
+            .collect::<Result<Vec<()>, Error>>()?;
         let rows = hashmap.len();
         let mut iter = hashmap.into_values();
-        let (accs, mut groups) = iter.next().unwrap();
+        let (accs, mut groups) = iter.next().ok_or(Error::EmptyHashmapForAggregate)?;
         accs.into_iter()
-            .for_each(|x| groups.push(x.final_value().unwrap().to_array(1)));
+            .map(|x| {
+                groups.push(x.final_value()?.to_array(1));
+                Ok(())
+            })
+            .collect::<Result<Vec<()>, Error>>()?;
         let mut columns = groups
             .into_iter()
             .map(|col| match col.data_type().to_physical_type() {
@@ -408,8 +425,7 @@ impl AggregateExec {
                 }
                 t => Err(Error::PhysicalTypeNotSuported(format!("{:?}", t))),
             })
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
+            .collect::<Result<Vec<_>, _>>()?;
         iter.for_each(|(accs, mut groups)| {
             accs.into_iter()
                 .for_each(|x| groups.push(x.final_value().unwrap().to_array(1)));
@@ -467,8 +483,8 @@ impl AggregateExec {
                 .map(|mut col| col.as_arc())
                 .collect::<Vec<Arc<_>>>(),
         );
-        Box::new(AggregateIterator {
+        Ok(Box::new(AggregateIterator {
             output: Some(Ok(columns)),
-        })
+        }))
     }
 }

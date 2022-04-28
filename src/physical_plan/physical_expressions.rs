@@ -23,7 +23,7 @@ pub trait PhysicalExpression: Display {
     fn evaluate(&self, input: &Chunk<Arc<dyn Array>>) -> Result<ColumnarValue, Error>;
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ColumnExpression {
     pub index: usize,
 }
@@ -67,7 +67,7 @@ impl fmt::Display for ColumnExpression {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct LiteralBoolExpression {
     pub value: BooleanScalar,
 }
@@ -92,7 +92,7 @@ impl fmt::Display for LiteralBoolExpression {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct LiteralStringExpression {
     pub value: Utf8Scalar<i32>,
 }
@@ -117,7 +117,7 @@ impl fmt::Display for LiteralStringExpression {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct LiteralIntegerExpression {
     pub(crate) value: PrimitiveScalar<i32>,
 }
@@ -142,7 +142,7 @@ impl fmt::Display for LiteralIntegerExpression {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct LiteralFloatExpression {
     pub(crate) value: PrimitiveScalar<f64>,
 }
@@ -313,7 +313,7 @@ macro_rules! mathExpression {
                                     },
                                 ))))
                             }
-                            _ => Err(Error::PrimitiveTypeNotSuported(format!(
+                            _ => Err(Error::PhysicalTypeNotSuported(format!(
                                 "{:?}",
                                 left.data_type()
                             ))),
@@ -448,9 +448,14 @@ macro_rules! aggregateExpression {
                             _ => Err(Error::DowncastError),
                         }
                     }
-                    _ => Err(Error::PrimitiveTypeNotSuported(format!(
-                        "{:?}",
-                        new.data_type()
+                    (PhysicalType::Primitive(PrimitiveType::Float64), PhysicalType::Null) => {
+                        Ok(true)
+                    }
+                    (PhysicalType::Primitive(PrimitiveType::Int32), PhysicalType::Null) => Ok(true),
+                    _ => Err(Error::PhysicalTypeNotSuported(format!(
+                        "{:?}, {:?}",
+                        new.data_type(),
+                        self.value.data_type()
                     ))),
                 }?;
                 if bool {

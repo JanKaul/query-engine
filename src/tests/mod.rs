@@ -34,7 +34,7 @@ fn test_max() {
         .aggregate(vec![col("bool_col")], vec![max(col("id"))])
         .execute()
         .unwrap();
-    assert_eq!(format!("{:?}", result[0][1]), "Int32[7, 6]");
+    assert_eq!(format!("{:?}", result[0][1]), "Int32[6, 7]");
 }
 
 #[test]

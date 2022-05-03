@@ -6,6 +6,7 @@ use std::fmt;
 use self::logical_expression::LogicalExpression;
 
 pub mod logical_expression;
+pub mod optimizer;
 
 pub enum LogicalPlan {
     Scan(Scan),
@@ -59,7 +60,7 @@ pub fn format_logical_plan(plan: &LogicalPlan, indent: usize) -> String {
 // Scan logical plan
 
 pub struct Scan {
-    path: String,
+    pub(crate) path: String,
     pub(crate) data_source: DataSource,
     pub(crate) projection: Option<Vec<String>>,
     pub(crate) schema: Schema,

@@ -98,7 +98,10 @@ impl fmt::Display for Scan {
                 f,
                 "Scan: {}; projection={}",
                 self.path,
-                String::from_iter(proj.clone().into_iter())
+                String::from_iter(proj.clone().into_iter().map(|mut x| {
+                    x.push_str(", ");
+                    x
+                }))
             ),
             None => write!(f, "Scan: {}; projection=None", self.path),
         }

@@ -40,10 +40,10 @@ fn test_max() {
 #[test]
 fn test_projection_push_down() {
     let df = DataFrame::parquet("src/tests/test.parquet")
-        .project(vec![col("id")])
+        .project(vec![col("bool_col")])
         .filter(col("id").eq(lit_int(4)));
     assert_eq!(
         format_logical_plan(&df.logical_plan().optimize(), 0),
-        "Selection: #id == '4',  \n \tProjection: #id,  \n \t \tScan: src/tests/test.parquet; projection=id \n"
+        "Selection: #id == '4',  \n \tProjection: #bool_col,  \n \t \tScan: src/tests/test.parquet; projection=bool_col, id,  \n"
     );
 }

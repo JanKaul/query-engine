@@ -84,58 +84,6 @@ fn test_scan() {
 }
 
 #[test]
-fn test_filter() {
-    let result = DataFrame::parquet("src/tests/userdata.parquet")
-        .filter(col("gender").eq(lit_string("Female")))
-        .execute()
-        .unwrap();
-    assert_eq!(
-        format!(
-            "{:?}",
-            result[0][2]
-                .as_any()
-                .downcast_ref::<Utf8Array<i32>>()
-                .expect("Failed to downcast array to utf8 array.")
-                .value(0)
-        ),
-        "\"Amanda\""
-    );
-    assert_eq!(
-        format!(
-            "{:?}",
-            result[0][3]
-                .as_any()
-                .downcast_ref::<Utf8Array<i32>>()
-                .expect("Failed to downcast array to utf8 array.")
-                .value(0)
-        ),
-        "\"Jordan\""
-    );
-    assert_eq!(
-        format!(
-            "{:?}",
-            result[0][2]
-                .as_any()
-                .downcast_ref::<Utf8Array<i32>>()
-                .expect("Failed to downcast array to utf8 array.")
-                .value(1)
-        ),
-        "\"Evelyn\""
-    );
-    assert_eq!(
-        format!(
-            "{:?}",
-            result[0][3]
-                .as_any()
-                .downcast_ref::<Utf8Array<i32>>()
-                .expect("Failed to downcast array to utf8 array.")
-                .value(1)
-        ),
-        "\"Morgan\""
-    );
-}
-
-#[test]
 fn test_projection() {
     let result = DataFrame::parquet("src/tests/userdata.parquet")
         .project(vec![col("email"), col("country")])
@@ -184,6 +132,58 @@ fn test_projection() {
                 .value(1)
         ),
         "\"Canada\""
+    );
+}
+
+#[test]
+fn test_filter() {
+    let result = DataFrame::parquet("src/tests/userdata.parquet")
+        .filter(col("gender").eq(lit_string("Female")))
+        .execute()
+        .unwrap();
+    assert_eq!(
+        format!(
+            "{:?}",
+            result[0][2]
+                .as_any()
+                .downcast_ref::<Utf8Array<i32>>()
+                .expect("Failed to downcast array to utf8 array.")
+                .value(0)
+        ),
+        "\"Amanda\""
+    );
+    assert_eq!(
+        format!(
+            "{:?}",
+            result[0][3]
+                .as_any()
+                .downcast_ref::<Utf8Array<i32>>()
+                .expect("Failed to downcast array to utf8 array.")
+                .value(0)
+        ),
+        "\"Jordan\""
+    );
+    assert_eq!(
+        format!(
+            "{:?}",
+            result[0][2]
+                .as_any()
+                .downcast_ref::<Utf8Array<i32>>()
+                .expect("Failed to downcast array to utf8 array.")
+                .value(1)
+        ),
+        "\"Evelyn\""
+    );
+    assert_eq!(
+        format!(
+            "{:?}",
+            result[0][3]
+                .as_any()
+                .downcast_ref::<Utf8Array<i32>>()
+                .expect("Failed to downcast array to utf8 array.")
+                .value(1)
+        ),
+        "\"Morgan\""
     );
 }
 
